@@ -31,3 +31,5 @@ capstone_env/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+prompt.txt
+prompt.txt
