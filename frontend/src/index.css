@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/* Dark-first base so the dashboard never flashes a light background. */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background-color: var(--color-slate-950);
+}
