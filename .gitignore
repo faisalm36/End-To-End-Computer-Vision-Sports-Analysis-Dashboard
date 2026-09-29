@@ -25,6 +25,10 @@ capstone_env/
 # Video files
 *.mp4
 *.mov
+*.avi
+
+# CV outputs
+cv/outputs/
 
 # OS / editor
 .DS_Store
