@@ -28,10 +28,19 @@ class Config:
     
     # Speed/distance settings
     FPS_DEFAULT = 30.0
-    MAX_PLAUSIBLE_SPEED_MPH = 22.0  # Top soccer players ~21mph
+    MAX_PLAUSIBLE_SPEED_MPH = 25.0  # ~40 km/h, filters only extreme outliers (fastest PL: 37.3 km/h = 23.2 mph)
     SPEED_SMOOTHING_WINDOW = 5
-    HIGH_SPEED_THRESHOLD_MPH = 15.0
-    SPRINT_THRESHOLD_MPH = 18.0
+    SUSTAINED_SPEED_WINDOW_S = 1.0  # Require speed to be sustained for ~1 second
+    
+    # Sprint/HSR threshold presets (with ≥1s dwell + hysteresis)
+    # GPS standard: 19.8 km/h HSR, 25.2 km/h Sprint
+    SPEED_PRESET = 'gps_standard'  # Options: 'gps_standard', 'gps_round', 'percent_max'
+    HIGH_SPEED_THRESHOLD_MPH = 12.3  # 19.8 km/h (GPS standard)
+    SPRINT_THRESHOLD_MPH = 15.7  # 25.2 km/h (GPS standard)
+    
+    # Alternative presets (applied if SPEED_PRESET changed):
+    # 'gps_round': 20 km/h (12.4 mph) HSR, 25 km/h (15.5 mph) sprint
+    # 'percent_max': 60% of personal max for HSR, 80% for sprint
     
     # Injury risk thresholds (based on workload)
     INJURY_RISK_LOW_DISTANCE_KM = 5.0

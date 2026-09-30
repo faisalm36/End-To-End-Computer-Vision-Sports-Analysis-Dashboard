@@ -18,7 +18,7 @@ from .metrics import PerformanceAnalyzer
 from .team_classifier import TeamClassifier
 
 # Pipeline version
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 
 class SoccerAnalyticsPipeline:
@@ -157,9 +157,16 @@ class SoccerAnalyticsPipeline:
             fps=fps,
             max_plausible_speed_mph=self.config.MAX_PLAUSIBLE_SPEED_MPH,
             speed_smoothing_window=self.config.SPEED_SMOOTHING_WINDOW,
+            sustained_speed_window_s=self.config.SUSTAINED_SPEED_WINDOW_S,
             high_speed_threshold_mph=self.config.HIGH_SPEED_THRESHOLD_MPH,
-            sprint_threshold_mph=self.config.SPRINT_THRESHOLD_MPH
+            sprint_threshold_mph=self.config.SPRINT_THRESHOLD_MPH,
+            speed_preset=self.config.SPEED_PRESET
         )
+        
+        # Add speed preset to metadata
+        self.metadata['speed_preset'] = self.config.SPEED_PRESET
+        self.metadata['hsr_threshold_kmh'] = round(self.config.HIGH_SPEED_THRESHOLD_MPH * 1.60934, 1)
+        self.metadata['sprint_threshold_kmh'] = round(self.config.SPRINT_THRESHOLD_MPH * 1.60934, 1)
         
         # Video writer for annotation
         writer = None

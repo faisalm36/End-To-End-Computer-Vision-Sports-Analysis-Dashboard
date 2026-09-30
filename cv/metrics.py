@@ -12,25 +12,32 @@ class PerformanceAnalyzer:
     def __init__(
         self,
         fps: float = 30.0,
-        max_plausible_speed_mph: float = 22.0,
+        max_plausible_speed_mph: float = 25.0,
         speed_smoothing_window: int = 5,
-        high_speed_threshold_mph: float = 15.0,
-        sprint_threshold_mph: float = 18.0
+        sustained_speed_window_s: float = 1.0,
+        high_speed_threshold_mph: float = 12.3,
+        sprint_threshold_mph: float = 15.7,
+        speed_preset: str = 'gps_standard'
     ):
         """Initialize performance analyzer.
         
         Args:
             fps: Video frames per second
-            max_plausible_speed_mph: Cap for implausible speeds
+            max_plausible_speed_mph: Filter for extreme outliers (not a cap)
             speed_smoothing_window: Window size for speed smoothing
+            sustained_speed_window_s: Window for sustained speed (seconds)
             high_speed_threshold_mph: Threshold for high-speed running
             sprint_threshold_mph: Threshold for sprints
+            speed_preset: Sprint/HSR preset ('gps_standard', 'gps_round', 'percent_max')
         """
         self.fps = fps
         self.max_plausible_speed_mph = max_plausible_speed_mph
         self.speed_smoothing_window = speed_smoothing_window
+        self.sustained_speed_window_s = sustained_speed_window_s
+        self.sustained_speed_window_frames = int(sustained_speed_window_s * fps)
         self.high_speed_threshold_mph = high_speed_threshold_mph
         self.sprint_threshold_mph = sprint_threshold_mph
+        self.speed_preset = speed_preset
         
         # Track positions per player
         self.track_positions: Dict[int, List[Tuple[float, float, float]]] = defaultdict(list)
@@ -98,6 +105,36 @@ class PerformanceAnalyzer:
         smoothed = uniform_filter1d(speeds_array, size=self.speed_smoothing_window, mode='nearest')
         return smoothed.tolist()
     
+    def calculate_sustained_speeds(self, speeds: List[float]) -> List[float]:
+        """Calculate sustained speeds using rolling window median.
+        
+        Requires speed to be sustained for ~1 second (rolling window).
+        This filters single-frame spikes while keeping real sprints.
+        
+        Args:
+            speeds: List of instantaneous speeds
+        
+        Returns:
+            Sustained speeds (median over window)
+        """
+        if len(speeds) < self.sustained_speed_window_frames:
+            # For very short sequences, use median of all
+            return [np.median(speeds)] * len(speeds) if speeds else []
+        
+        sustained = []
+        half_window = self.sustained_speed_window_frames // 2
+        
+        for i in range(len(speeds)):
+            # Get window around current position
+            start = max(0, i - half_window)
+            end = min(len(speeds), i + half_window + 1)
+            window = speeds[start:end]
+            
+            # Use median for robustness
+            sustained.append(np.median(window))
+        
+        return sustained
+    
     def calculate_distance(self, positions: List[Tuple[float, float, float]]) -> float:
         """Calculate total distance covered in kilometers.
         
@@ -131,6 +168,8 @@ class PerformanceAnalyzer:
     ) -> Dict[str, float]:
         """Calculate workload metrics for injury risk.
         
+        Uses sustained speeds and threshold dwells with hysteresis.
+        
         Args:
             speeds: List of speeds in mph
         
@@ -145,7 +184,7 @@ class PerformanceAnalyzer:
                 'max_speed_mph': 0.0
             }
         
-        # Filter outliers: speeds above plausible max are likely detection errors
+        # Filter extreme outliers (only drops clearly implausible speeds)
         valid_speeds = [s for s in speeds if s <= self.max_plausible_speed_mph]
         
         if not valid_speeds:
@@ -157,34 +196,38 @@ class PerformanceAnalyzer:
                 'max_speed_mph': 0.0
             }
         
-        # Use 95th percentile over a sustained window for robust top speed
-        # This filters single-frame spikes while keeping real bursts
-        if len(valid_speeds) >= 10:
-            # Sort and take 95th percentile
-            sorted_speeds = sorted(valid_speeds, reverse=True)
-            percentile_idx = int(len(sorted_speeds) * 0.05)  # Top 5%
-            robust_max_speed = sorted_speeds[percentile_idx]
-        else:
-            # For short sequences, just use max of valid speeds
-            robust_max_speed = max(valid_speeds)
+        # Calculate sustained speeds (rolling window median ~1s)
+        sustained_speeds = self.calculate_sustained_speeds(valid_speeds)
         
-        # Distance covered at high speed (use all valid speeds for distance calc)
-        high_speed_frames = sum(1 for s in valid_speeds if s >= self.high_speed_threshold_mph)
+        # Top speed: max of sustained speeds (99th percentile for extra robustness)
+        if len(sustained_speeds) >= 10:
+            sorted_sustained = sorted(sustained_speeds, reverse=True)
+            percentile_idx = int(len(sorted_sustained) * 0.01)  # Top 1%
+            robust_max_speed = sorted_sustained[percentile_idx]
+        else:
+            # For short sequences, just use max
+            robust_max_speed = max(sustained_speeds)
+        
+        # Distance calculations with ≥1s dwell (use sustained speeds)
+        # HSR: High-Speed Running
+        high_speed_frames = sum(1 for s in sustained_speeds if s >= self.high_speed_threshold_mph)
         high_speed_distance_m = high_speed_frames * (self.high_speed_threshold_mph / 2.23694) / self.fps
         
-        # Distance covered sprinting
-        sprint_frames = sum(1 for s in valid_speeds if s >= self.sprint_threshold_mph)
+        # Sprint distance
+        sprint_frames = sum(1 for s in sustained_speeds if s >= self.sprint_threshold_mph)
         sprint_distance_m = sprint_frames * (self.sprint_threshold_mph / 2.23694) / self.fps
         
-        # Count sprint bursts (consecutive frames above threshold)
+        # Count sprint bursts with hysteresis (consecutive frames above threshold)
+        # Hysteresis: once in sprint, stay until speed drops below 90% of threshold
         sprint_count = 0
         in_sprint = False
-        for speed in valid_speeds:
-            if speed >= self.sprint_threshold_mph:
-                if not in_sprint:
-                    sprint_count += 1
-                    in_sprint = True
-            else:
+        sprint_exit_threshold = self.sprint_threshold_mph * 0.9
+        
+        for speed in sustained_speeds:
+            if not in_sprint and speed >= self.sprint_threshold_mph:
+                sprint_count += 1
+                in_sprint = True
+            elif in_sprint and speed < sprint_exit_threshold:
                 in_sprint = False
         
         return {
