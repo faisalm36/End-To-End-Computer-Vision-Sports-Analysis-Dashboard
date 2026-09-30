@@ -685,6 +685,27 @@ class SoccerAnalyticsPipeline:
     
     def _save_outputs(self, output_dir: Path, player_stats: List[Dict]):
         """Save detection and statistics outputs."""
+        # Convert numpy types to native Python types for JSON serialization
+        def convert_numpy(obj):
+            """Recursively convert numpy types to native Python types."""
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, dict):
+                return {k: convert_numpy(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy(item) for item in obj]
+            else:
+                return obj
+        
+        # Convert all outputs
+        self.detections = convert_numpy(self.detections)
+        player_stats = convert_numpy(player_stats)
+        self.metadata = convert_numpy(self.metadata)
+        
         # If no calibration, nullify all physical metrics
         if not self.homography:
             for stat in player_stats:
