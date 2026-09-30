@@ -32,11 +32,11 @@ class TestPerformanceAnalyzer(unittest.TestCase):
     def test_speed_calculation_zero_movement(self):
         """Test speed calculation with no movement."""
         positions = [
-            (0.0, 0.0, 0.0),
-            (0.0, 0.0, 1.0),
-            (0.0, 0.0, 2.0)
+            (0.0, 0.0, 0.0, True),
+            (0.0, 0.0, 1.0, True),
+            (0.0, 0.0, 2.0, True)
         ]
-        speeds = self.analyzer.calculate_speed(positions)
+        speeds, detected_flags = self.analyzer.calculate_speed(positions)
         self.assertEqual(len(speeds), 2)
         self.assertAlmostEqual(speeds[0], 0.0)
         self.assertAlmostEqual(speeds[1], 0.0)
@@ -45,11 +45,11 @@ class TestPerformanceAnalyzer(unittest.TestCase):
         """Test speed calculation with constant movement."""
         # Moving 1 meter per second = 2.237 mph
         positions = [
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 1.0),
-            (2.0, 0.0, 2.0)
+            (0.0, 0.0, 0.0, True),
+            (1.0, 0.0, 1.0, True),
+            (2.0, 0.0, 2.0, True)
         ]
-        speeds = self.analyzer.calculate_speed(positions)
+        speeds, detected_flags = self.analyzer.calculate_speed(positions)
         self.assertEqual(len(speeds), 2)
         # 1 m/s = 2.237 mph
         self.assertAlmostEqual(speeds[0], 2.237, delta=0.1)
@@ -59,15 +59,19 @@ class TestPerformanceAnalyzer(unittest.TestCase):
         """Test that implausible speeds are filtered, not capped."""
         # Teleport 100 meters in 1 second (impossible)
         positions = [
-            (0.0, 0.0, 0.0),
-            (100.0, 0.0, 1.0)
+            (0.0, 0.0, 0.0, True),
+            (100.0, 0.0, 1.0, True)
         ]
-        speeds = self.analyzer.calculate_speed(positions)
+        speeds, detected_flags = self.analyzer.calculate_speed(positions)
         # Should NOT be capped - raw calculation preserved
         self.assertGreater(speeds[0], 22.0)
         
         # But workload metrics should filter it
-        metrics = self.analyzer.calculate_workload_metrics(speeds, positions)
+        detected_flags_for_metrics = [True] * len(speeds)
+        metrics = self.analyzer.calculate_workload_metrics(speeds, detected_flags_for_metrics, positions)
+        # Call calculate_workload_metrics with detected_flags
+        detected_flags = [True] * len(speeds)
+        metrics = self.analyzer.calculate_workload_metrics(speeds, detected_flags, positions)
         # Max speed should be 0 since all speeds were outliers
         self.assertEqual(metrics['max_speed_mph'], 0.0)
     
@@ -122,7 +126,7 @@ class TestPerformanceAnalyzer(unittest.TestCase):
         # At 30 fps, time delta is 1/30 seconds per position
         positions = []
         for i in range(11):
-            positions.append((float(i) * 0.5, 0.0, float(i) / 30.0))
+            positions.append((float(i) * 0.5, 0.0, float(i) / 30.0, True))
         
         distance_km = self.analyzer.calculate_distance(positions)
         # Total: 10 segments * 0.5m = 5 meters = 0.005 km
@@ -131,7 +135,7 @@ class TestPerformanceAnalyzer(unittest.TestCase):
     
     def test_distance_with_single_position(self):
         """Test distance with insufficient positions."""
-        positions = [(0.0, 0.0, 0.0)]
+        positions = [(0.0, 0.0, 0.0, True)]
         distance_km = self.analyzer.calculate_distance(positions)
         self.assertEqual(distance_km, 0.0)
     
@@ -140,7 +144,9 @@ class TestPerformanceAnalyzer(unittest.TestCase):
         speeds = [5.0, 6.0, 5.5, 6.5, 5.0]  # All below high-speed threshold
         # Create dummy positions for these speeds
         positions = [(float(i), 0.0, float(i)/30.0) for i in range(len(speeds) + 1)]
-        metrics = self.analyzer.calculate_workload_metrics(speeds, positions)
+        # Call calculate_workload_metrics with detected_flags
+        detected_flags = [True] * len(speeds)
+        metrics = self.analyzer.calculate_workload_metrics(speeds, detected_flags, positions)
         
         self.assertEqual(metrics['sprint_count'], 0)
         self.assertEqual(metrics['high_speed_distance_km'], 0.0)
@@ -167,7 +173,9 @@ class TestPerformanceAnalyzer(unittest.TestCase):
         ]
         # Create dummy positions
         positions = [(float(i), 0.0, float(i)/30.0) for i in range(len(speeds) + 1)]
-        metrics = self.analyzer.calculate_workload_metrics(speeds, positions)
+        # Call calculate_workload_metrics with detected_flags
+        detected_flags = [True] * len(speeds)
+        metrics = self.analyzer.calculate_workload_metrics(speeds, detected_flags, positions)
         
         # With sustained window and dwell threshold, should detect sprint bursts
         # The sustained speed calculation will smooth these, so we should see counts
