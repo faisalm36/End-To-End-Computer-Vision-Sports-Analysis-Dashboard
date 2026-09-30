@@ -1,10 +1,10 @@
 # Soccer Video Analytics - Computer Vision Pipeline v2.0
 
-This directory contains the computer vision pipeline for soccer video analytics with **commercial-quality tracking** approaching systems like Veo, Pixellot, and SkillCorner.
+This directory contains the computer vision pipeline for soccer video analytics with enhanced tracking capabilities for single-camera amateur footage.
 
-## Version 2.0 Highlights 🚀
+## Version 2.0 Features
 
-**Pipeline v2.0** (current) brings professional-grade enhancements:
+**Pipeline v2.0** includes:
 
 - **BoT-SORT tracking** with Camera Motion Compensation (GMC) + ReID
 - **Dedicated ball tracker** with Kalman filtering + speed gating (35 m/s cap)
@@ -12,9 +12,9 @@ This directory contains the computer vision pipeline for soccer video analytics 
 - **Per-tracklet team classification** with kit colour priors + goalkeeper detection
 - **Legibility-filtered OCR** with confidence-weighted voting + roster constraints
 - **Offline tracklet stitching** for stable `player_uid` across ID switches
-- **Metrics hygiene**: top speed from detected frames only, acceleration cap (6 m/s²)
+- **Metrics improvements**: top speed from detected frames only, acceleration cap (6 m/s²)
 
-### What's New in v2.0
+### Changes from v1.2.0
 
 | Feature | v1.2.0 | v2.0 |
 |---------|--------|------|
@@ -571,15 +571,7 @@ pip install scipy
 
 ## Performance Benchmarks
 
-Approximate processing speeds (on 1920×1080 video, yolov8x.pt):
-
-| Device | FPS Processed | Real-time Factor |
-|--------|---------------|------------------|
-| CPU (8-core) | ~2 FPS | 0.07x |
-| MPS (M2 Mac) | ~15 FPS | 0.5x |
-| CUDA (RTX 3090) | ~45 FPS | 1.5x |
-
-**Note**: OCR and annotated video output reduce speed by ~20-30%.
+Performance depends on hardware, model size, and video resolution. Test on your hardware to determine processing speed. OCR and annotated video output add overhead.
 
 ## Contact & Support
 

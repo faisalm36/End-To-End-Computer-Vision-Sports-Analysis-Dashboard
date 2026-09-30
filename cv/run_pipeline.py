@@ -77,14 +77,14 @@ def main():
         '--kits',
         type=str,
         default=None,
-        help='Path to kit colours JSON (team_a and team_b colours)'
+        help='Kit colours: JSON file (kits.json) or inline "#FF0000,#0000FF" (team_a,team_b hex RGB)'
     )
     
     parser.add_argument(
         '--roster',
         type=str,
         default=None,
-        help='Path to roster JSON (valid jersey numbers per team)'
+        help='Roster: JSON file (roster.json) or inline "1,2,3,10,11" (comma-separated jersey numbers)'
     )
     
     parser.add_argument(

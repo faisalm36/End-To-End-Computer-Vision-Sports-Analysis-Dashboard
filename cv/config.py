@@ -125,13 +125,23 @@ class Config:
                 self.load_calibration(str(default_path))
                 self.calibration_source = str(default_path)
         
-        # Load kit colours
+        # Load kit colours (supports JSON file path or inline "#FF0000,#0000FF")
         if kits_path:
-            self.load_kits(kits_path)
+            if ',' in kits_path and kits_path.count(',') == 1 and not kits_path.endswith('.json'):
+                # Inline format: "#FF0000,#0000FF"
+                self.load_kits_inline(kits_path)
+            else:
+                # JSON file path
+                self.load_kits(kits_path)
         
-        # Load roster
+        # Load roster (supports JSON file path or inline "1,2,3,10,11")
         if roster_path:
-            self.load_roster(roster_path)
+            if ',' in roster_path and not roster_path.endswith('.json'):
+                # Inline format: "1,2,3,10,11"
+                self.load_roster_inline(roster_path)
+            else:
+                # JSON file path
+                self.load_roster(roster_path)
     
     def load_calibration(self, path: str):
         """Load calibration from JSON or YAML file.
@@ -189,6 +199,32 @@ class Config:
         
         print(f"Loaded kit colours from {path}")
     
+    def load_kits_inline(self, inline_spec: str):
+        """Load kit colours from inline format: "#FF0000,#0000FF" (team_a, team_b).
+        
+        Args:
+            inline_spec: Comma-separated hex colours for team A and team B
+        """
+        parts = inline_spec.split(',')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid kit inline format: expected '#RRGGBB,#RRGGBB', got {inline_spec}")
+        
+        def hex_to_bgr(hex_color: str) -> tuple:
+            """Convert hex #RRGGBB to BGR tuple."""
+            hex_color = hex_color.strip().lstrip('#')
+            if len(hex_color) != 6:
+                raise ValueError(f"Invalid hex color: {hex_color}")
+            r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+            return (b, g, r)  # OpenCV uses BGR
+        
+        self.kit_colours = {
+            'team_a': hex_to_bgr(parts[0]),
+            'team_b': hex_to_bgr(parts[1])
+        }
+        
+        print(f"Loaded kit colours from inline spec: {inline_spec}")
+
+    
     def load_roster(self, path: str):
         """Load roster (valid jersey numbers) from JSON file.
         
@@ -207,6 +243,18 @@ class Config:
         self.roster_team_b = data.get('team_b', [])
         
         print(f"Loaded rosters: Team A ({len(self.roster_team_a)} players), Team B ({len(self.roster_team_b)} players)")
+    
+    def load_roster_inline(self, inline_spec: str):
+        """Load roster from inline format: "1,2,3,10,11" (single team).
+        
+        Args:
+            inline_spec: Comma-separated jersey numbers (currently single team only)
+        """
+        numbers = [int(n.strip()) for n in inline_spec.split(',') if n.strip()]
+        self.roster_team_a = set(numbers)
+        self.roster_team_b = None  # Inline format supports one team only for now
+        
+        print(f"Loaded roster from inline spec: {len(numbers)} numbers for team A")
     
     def get_example_kits(self) -> Dict:
         """Return example kit colours structure."""
