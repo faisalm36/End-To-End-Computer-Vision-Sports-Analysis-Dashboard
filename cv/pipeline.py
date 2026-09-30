@@ -412,6 +412,12 @@ class SoccerAnalyticsPipeline:
                 self.team_classifier.assign_teams()
                 self.team_classifier.refine_with_voting(min_observations=3)
         
+        # Collect warnings from team classifier (bug fix: log once, not flooding console)
+        if self.team_classifier and hasattr(self.team_classifier, 'warnings'):
+            for warning in self.team_classifier.warnings:
+                if warning not in self.warnings:
+                    self.warnings.append(warning)
+        
         # v2.0: Detect goalkeepers based on positions
         if self.team_classifier and self.team_classifier.fitted and tracklet_positions:
             print("Detecting goalkeepers...")

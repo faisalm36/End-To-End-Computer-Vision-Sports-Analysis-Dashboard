@@ -126,11 +126,11 @@ class TeamClassifierEnhanced:
         
         self.frame_count += 1
     
-    def fit_teams(self, min_samples: int = 4):
+    def fit_teams(self, min_samples: int = 2):
         """Fit team classifier on collected colors (per-tracklet median).
         
         Args:
-            min_samples: Minimum number of tracks
+            min_samples: Minimum number of tracks (default: 2, lowered from 4 for v2.0)
         """
         if self.fitted:
             return
@@ -147,8 +147,21 @@ class TeamClassifierEnhanced:
                 track_ids.append(track_id)
         
         if len(all_colors) < min_samples:
-            print(f"Warning: Only {len(all_colors)} tracks, need >= {min_samples} for classification")
+            warning = f"Team classification skipped: only {len(all_colors)} tracks (need >= {min_samples})"
+            print(f"Warning: {warning}")
+            # Store warning for meta.json (will be picked up by pipeline)
+            if not hasattr(self, 'warnings'):
+                self.warnings = []
+            self.warnings.append(warning)
             return
+        
+        # Warn if low confidence (< 4 tracks)
+        if len(all_colors) < 4:
+            warning = f"Team classification: low confidence with only {len(all_colors)} tracks (recommend >= 4)"
+            print(f"Warning: {warning}")
+            if not hasattr(self, 'warnings'):
+                self.warnings = []
+            self.warnings.append(warning)
         
         # If kit colours provided, use them as priors
         if self.kit_colours:

@@ -461,59 +461,95 @@ class PerformanceAnalyzer:
         
         detected_count = sum(1 for det in detected_flags if det)
         
-        # Distance calculations with ≥1s dwell (use sustained speeds)
-        # HSR: High-Speed Running
-        high_speed_frames = sum(1 for s in sustained_speeds if s >= self.high_speed_threshold_mph)
-        high_speed_distance_m = high_speed_frames * (self.high_speed_threshold_mph / 2.23694) / self.fps
+        # Distance calculations: Sum actual distances while above threshold
+        # NOT frames * threshold (which was the bug)
         
-        # Sprint distance
-        sprint_frames = sum(1 for s in sustained_speeds if s >= self.sprint_threshold_mph)
-        sprint_distance_m = sprint_frames * (self.sprint_threshold_mph / 2.23694) / self.fps
+        # Calculate per-frame distances
+        frame_distances_m = []
+        for i in range(1, len(positions)):
+            x1, y1, t1, _ = positions[i - 1]
+            x2, y2, t2, _ = positions[i]
+            dist_m = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            frame_distances_m.append(dist_m)
         
-        # Count HSR bursts with hysteresis
+        # HSR distance: sum distances where sustained speed >= HSR threshold
+        high_speed_distance_m = 0.0
+        for i, speed in enumerate(sustained_speeds):
+            if i < len(frame_distances_m) and speed >= self.high_speed_threshold_mph:
+                high_speed_distance_m += frame_distances_m[i]
+        
+        # Sprint distance: sum distances where sustained speed >= sprint threshold
+        sprint_distance_m = 0.0
+        for i, speed in enumerate(sustained_speeds):
+            if i < len(frame_distances_m) and speed >= self.sprint_threshold_mph:
+                sprint_distance_m += frame_distances_m[i]
+        
+        # Count HSR bursts with hysteresis and gap bridging
         hsr_count = 0
         in_hsr = False
         hsr_exit_threshold = self.high_speed_threshold_mph * 0.9
         hsr_duration_frames = 0
         min_dwell_frames = int(1.0 * self.fps)  # 1 second minimum
+        gap_frames = 0
+        max_gap_frames = int(0.2 * self.fps)  # Bridge gaps up to 0.2s
         
         for speed in sustained_speeds:
             if not in_hsr and speed >= self.high_speed_threshold_mph:
                 in_hsr = True
                 hsr_duration_frames = 1
+                gap_frames = 0
             elif in_hsr:
                 if speed >= hsr_exit_threshold:
                     hsr_duration_frames += 1
+                    gap_frames = 0  # Reset gap counter
                 else:
-                    # Exit HSR
-                    if hsr_duration_frames >= min_dwell_frames:
-                        hsr_count += 1
-                    in_hsr = False
-                    hsr_duration_frames = 0
+                    # Below threshold: start gap counter
+                    gap_frames += 1
+                    if gap_frames <= max_gap_frames:
+                        # Bridge short gap (count towards duration)
+                        hsr_duration_frames += 1
+                    else:
+                        # Gap too long: exit HSR
+                        if hsr_duration_frames >= min_dwell_frames:
+                            hsr_count += 1
+                        in_hsr = False
+                        hsr_duration_frames = 0
+                        gap_frames = 0
         
         # Count last HSR if still active
         if in_hsr and hsr_duration_frames >= min_dwell_frames:
             hsr_count += 1
         
-        # Count sprint bursts with hysteresis
+        # Count sprint bursts with hysteresis and gap bridging
         sprint_count = 0
         in_sprint = False
         sprint_exit_threshold = self.sprint_threshold_mph * 0.9
         sprint_duration_frames = 0
+        gap_frames = 0
+        max_gap_frames = int(0.2 * self.fps)  # Bridge gaps up to 0.2s
         
         for speed in sustained_speeds:
             if not in_sprint and speed >= self.sprint_threshold_mph:
                 in_sprint = True
                 sprint_duration_frames = 1
+                gap_frames = 0
             elif in_sprint:
                 if speed >= sprint_exit_threshold:
                     sprint_duration_frames += 1
+                    gap_frames = 0  # Reset gap counter
                 else:
-                    # Exit sprint
-                    if sprint_duration_frames >= min_dwell_frames:
-                        sprint_count += 1
-                    in_sprint = False
-                    sprint_duration_frames = 0
+                    # Below threshold: start gap counter
+                    gap_frames += 1
+                    if gap_frames <= max_gap_frames:
+                        # Bridge short gap (count towards duration)
+                        sprint_duration_frames += 1
+                    else:
+                        # Gap too long: exit sprint
+                        if sprint_duration_frames >= min_dwell_frames:
+                            sprint_count += 1
+                        in_sprint = False
+                        sprint_duration_frames = 0
+                        gap_frames = 0
         
         # Count last sprint if still active
         if in_sprint and sprint_duration_frames >= min_dwell_frames:
