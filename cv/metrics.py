@@ -81,7 +81,14 @@ class PerformanceAnalyzer:
         # Track positions per player
         self.track_positions: Dict[int, List[Tuple[float, float, float]]] = defaultdict(list)
     
-    def add_position(self, track_id: int, pitch_x: float, pitch_y: float, timestamp: float):
+    def add_position(
+        self,
+        track_id: int,
+        pitch_x: float,
+        pitch_y: float,
+        timestamp: float,
+        is_detected: bool = True
+    ):
         """Add position for a player track.
         
         Args:
@@ -89,29 +96,36 @@ class PerformanceAnalyzer:
             pitch_x: Pitch x coordinate in meters
             pitch_y: Pitch y coordinate in meters
             timestamp: Timestamp in seconds
+            is_detected: Whether this is a detected (True) or interpolated (False) position
         """
-        self.track_positions[track_id].append((pitch_x, pitch_y, timestamp))
+        self.track_positions[track_id].append((pitch_x, pitch_y, timestamp, is_detected))
     
-    def calculate_speed(self, positions: List[Tuple[float, float, float]]) -> List[float]:
+    def calculate_speed(
+        self,
+        positions: List[Tuple[float, float, float, bool]]
+    ) -> Tuple[List[float], List[bool]]:
         """Calculate instantaneous speeds from positions.
         
         Args:
-            positions: List of (x, y, t) tuples
+            positions: List of (x, y, t, is_detected) tuples
         
         Returns:
-            List of speeds in mph (uncapped for robust statistics)
+            (speeds in mph, is_detected flags)
         """
         if len(positions) < 2:
-            return []
+            return [], []
         
         speeds = []
+        detected_flags = []
+        
         for i in range(1, len(positions)):
-            x1, y1, t1 = positions[i - 1]
-            x2, y2, t2 = positions[i]
+            x1, y1, t1, det1 = positions[i - 1]
+            x2, y2, t2, det2 = positions[i]
             
             dt = t2 - t1
             if dt <= 0:
                 speeds.append(0.0)
+                detected_flags.append(det1 and det2)
                 continue
             
             # Distance in meters
@@ -123,10 +137,11 @@ class PerformanceAnalyzer:
             # Convert to mph
             speed_mph = speed_ms * 2.23694
             
-            # Don't cap here - let outlier detection handle implausible speeds
             speeds.append(speed_mph)
+            # Speed is "detected" only if both positions are detected
+            detected_flags.append(det1 and det2)
         
-        return speeds
+        return speeds, detected_flags
     
     def smooth_speeds(self, speeds: List[float]) -> List[float]:
         """Smooth speeds to reduce jitter.
@@ -174,11 +189,14 @@ class PerformanceAnalyzer:
         
         return sustained
     
-    def calculate_distance(self, positions: List[Tuple[float, float, float]]) -> float:
+    def calculate_distance(
+        self,
+        positions: List[Tuple[float, float, float, bool]]
+    ) -> float:
         """Calculate total distance covered in kilometers.
         
         Args:
-            positions: List of (x, y, t) tuples
+            positions: List of (x, y, t, is_detected) tuples
         
         Returns:
             Total distance in km
@@ -188,8 +206,8 @@ class PerformanceAnalyzer:
         
         total_distance_m = 0.0
         for i in range(1, len(positions)):
-            x1, y1, _ = positions[i - 1]
-            x2, y2, _ = positions[i]
+            x1, y1, _, _ = positions[i - 1]
+            x2, y2, _, _ = positions[i]
             
             distance_m = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
             
@@ -249,14 +267,19 @@ class PerformanceAnalyzer:
             'zone_sprint_km': zone_distance_km(sprint_frames, self.zone_hsr_kmh, self.zone_hsr_kmh + 10.0)
         }
     
-    def calculate_accelerations(self, positions: List[Tuple[float, float, float]]) -> Tuple[int, int]:
+    def calculate_accelerations(
+        self,
+        positions: List[Tuple[float, float, float, bool]],
+        max_accel_ms2: float = 6.0
+    ) -> Tuple[int, int]:
         """Calculate high acceleration and deceleration event counts.
         
         Uses smoothed velocity and requires sustained acceleration >= threshold
-        for >= dwell time.
+        for >= dwell time. Caps acceleration at max_accel_ms2 (~6 m/s²).
         
         Args:
-            positions: List of (x, y, t) tuples
+            positions: List of (x, y, t, is_detected) tuples
+            max_accel_ms2: Maximum plausible acceleration (caps extreme values)
         
         Returns:
             (accel_count_high, decel_count_high)
@@ -267,8 +290,8 @@ class PerformanceAnalyzer:
         # Calculate velocities (m/s)
         velocities = []
         for i in range(1, len(positions)):
-            x1, y1, t1 = positions[i - 1]
-            x2, y2, t2 = positions[i]
+            x1, y1, t1, _ = positions[i - 1]
+            x2, y2, t2, _ = positions[i]
             dt = t2 - t1
             if dt <= 0:
                 velocities.append(0.0)
@@ -294,6 +317,10 @@ class PerformanceAnalyzer:
         for i in range(1, len(velocities_smoothed)):
             dv = velocities_smoothed[i] - velocities_smoothed[i - 1]
             accel = dv / dt_frame
+            
+            # Cap acceleration at max_accel_ms2
+            accel = np.clip(accel, -max_accel_ms2, max_accel_ms2)
+            
             accelerations.append(accel)
         
         if not accelerations:
@@ -332,11 +359,14 @@ class PerformanceAnalyzer:
         
         return (accel_count, decel_count)
     
-    def calculate_heatmap(self, positions: List[Tuple[float, float, float]]) -> List[List[float]]:
+    def calculate_heatmap(
+        self,
+        positions: List[Tuple[float, float, float, bool]]
+    ) -> List[List[float]]:
         """Calculate spatial heatmap on pitch grid.
         
         Args:
-            positions: List of (x, y, t) tuples in meters
+            positions: List of (x, y, t, is_detected) tuples in meters
         
         Returns:
             2D grid (ny x nx) with time spent in each cell (seconds)
@@ -349,7 +379,7 @@ class PerformanceAnalyzer:
         
         dt = 1.0 / self.fps
         
-        for x, y, t in positions:
+        for x, y, t, _ in positions:
             # Map to grid coordinates
             # x: 0 to pitch_length_m -> 0 to nx-1
             # y: 0 to pitch_width_m -> 0 to ny-1
@@ -367,15 +397,18 @@ class PerformanceAnalyzer:
     def calculate_workload_metrics(
         self,
         speeds: List[float],
-        positions: List[Tuple[float, float, float]]
+        detected_flags: List[bool],
+        positions: List[Tuple[float, float, float, bool]]
     ) -> Dict[str, float]:
         """Calculate workload metrics for injury risk.
         
         Uses sustained speeds and threshold dwells with hysteresis.
+        Top speed computed only from detected (non-interpolated) frames.
         
         Args:
             speeds: List of speeds in mph
-            positions: List of (x, y, t) tuples
+            detected_flags: List of is_detected flags per speed
+            positions: List of (x, y, t, is_detected) tuples
         
         Returns:
             Dict with workload metrics
@@ -386,7 +419,9 @@ class PerformanceAnalyzer:
                 'sprint_distance_km': 0.0,
                 'sprint_count': 0,
                 'hsr_count': 0,
-                'max_speed_mph': 0.0
+                'max_speed_mph': 0.0,
+                'detected_speed_frames': 0,
+                'total_speed_frames': 0
             }
         
         # Filter extreme outliers (only drops clearly implausible speeds)
@@ -399,20 +434,32 @@ class PerformanceAnalyzer:
                 'sprint_distance_km': 0.0,
                 'sprint_count': 0,
                 'hsr_count': 0,
-                'max_speed_mph': 0.0
+                'max_speed_mph': 0.0,
+                'detected_speed_frames': 0,
+                'total_speed_frames': 0
             }
         
         # Calculate sustained speeds (rolling window median ~1s)
         sustained_speeds = self.calculate_sustained_speeds(valid_speeds)
         
-        # Top speed: max of sustained speeds (99th percentile for extra robustness)
-        if len(sustained_speeds) >= 10:
-            sorted_sustained = sorted(sustained_speeds, reverse=True)
-            percentile_idx = int(len(sorted_sustained) * 0.01)  # Top 1%
-            robust_max_speed = sorted_sustained[percentile_idx]
+        # Top speed: max of sustained speeds FROM DETECTED FRAMES ONLY
+        detected_sustained_speeds = [
+            s for s, det in zip(sustained_speeds, detected_flags[:len(sustained_speeds)])
+            if det
+        ]
+        
+        if detected_sustained_speeds:
+            if len(detected_sustained_speeds) >= 10:
+                sorted_sustained = sorted(detected_sustained_speeds, reverse=True)
+                percentile_idx = int(len(sorted_sustained) * 0.01)  # Top 1%
+                robust_max_speed = sorted_sustained[percentile_idx]
+            else:
+                robust_max_speed = max(detected_sustained_speeds)
         else:
-            # For short sequences, just use max
-            robust_max_speed = max(sustained_speeds)
+            # Fall back to all sustained speeds if no detected speeds
+            robust_max_speed = max(sustained_speeds) if sustained_speeds else 0.0
+        
+        detected_count = sum(1 for det in detected_flags if det)
         
         # Distance calculations with ≥1s dwell (use sustained speeds)
         # HSR: High-Speed Running
@@ -477,7 +524,9 @@ class PerformanceAnalyzer:
             'sprint_distance_km': sprint_distance_m / 1000.0,
             'sprint_count': sprint_count,
             'hsr_count': hsr_count,
-            'max_speed_mph': robust_max_speed
+            'max_speed_mph': robust_max_speed,
+            'detected_speed_frames': detected_count,
+            'total_speed_frames': len(speeds)
         }
     
     def calculate_injury_risk(
@@ -538,15 +587,15 @@ class PerformanceAnalyzer:
         if len(positions) < 2:
             return None
         
-        # Calculate speeds
-        speeds = self.calculate_speed(positions)
+        # Calculate speeds with detected flags
+        speeds, detected_flags = self.calculate_speed(positions)
         smoothed_speeds = self.smooth_speeds(speeds)
         
         # Calculate distance
         total_distance_km = self.calculate_distance(positions)
         
         # Temporal metrics
-        timestamps = [t for _, _, t in positions]
+        timestamps = [t for _, _, t, _ in positions]
         first_seen = min(timestamps)
         last_seen = max(timestamps)
         minutes_played = (last_seen - first_seen) / 60.0
@@ -558,11 +607,11 @@ class PerformanceAnalyzer:
             distance_per_min_m = (total_distance_km * 1000.0) / visible_minutes
         
         # Average pitch position
-        avg_pitch_x = np.mean([x for x, _, _ in positions])
-        avg_pitch_y = np.mean([y for _, y, _ in positions])
+        avg_pitch_x = np.mean([x for x, _, _, _ in positions])
+        avg_pitch_y = np.mean([y for _, y, _, _ in positions])
         
-        # Workload metrics
-        workload_metrics = self.calculate_workload_metrics(smoothed_speeds, positions)
+        # Workload metrics (now with detected flags)
+        workload_metrics = self.calculate_workload_metrics(smoothed_speeds, detected_flags, positions)
         
         # Speed zones
         speed_zones = self.calculate_speed_zones(smoothed_speeds)
@@ -601,6 +650,8 @@ class PerformanceAnalyzer:
             'accel_count_high': accel_count_high,
             'decel_count_high': decel_count_high,
             'coverage_pct': round(coverage_pct, 2) if coverage_pct is not None else None,
+            'detected_frames': workload_metrics.get('detected_speed_frames', 0),
+            'total_frames': workload_metrics.get('total_speed_frames', 0),
             'injury_risk': injury_risk
         }
     
