@@ -7,12 +7,18 @@ import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, List
 from tqdm import tqdm
+from datetime import datetime
+import time
 
 from .config import Config
 from .detection import DetectionTracker
 from .ocr import JerseyNumberReader
 from .homography import HomographyTransform
 from .metrics import PerformanceAnalyzer
+from .team_classifier import TeamClassifier
+
+# Pipeline version
+__version__ = "1.1.0"
 
 
 class SoccerAnalyticsPipeline:
@@ -23,7 +29,8 @@ class SoccerAnalyticsPipeline:
         config: Config,
         model_path: str = "yolov8x.pt",
         device: str = "auto",
-        enable_ocr: bool = True
+        enable_ocr: bool = True,
+        enable_team_classification: bool = True
     ):
         """Initialize pipeline.
         
@@ -32,9 +39,12 @@ class SoccerAnalyticsPipeline:
             model_path: Path to YOLO model weights
             device: Device for inference
             enable_ocr: Enable jersey number OCR
+            enable_team_classification: Enable team/role classification
         """
         self.config = config
         self.device = device
+        self.model_path = model_path
+        self.enable_team_classification = enable_team_classification
         
         # Initialize components
         print("Initializing detection tracker...")
@@ -66,10 +76,19 @@ class SoccerAnalyticsPipeline:
                 config.PITCH_WIDTH_M,
                 config.PITCH_LENGTH_M
             )
+        else:
+            print("Warning: No calibration provided - pitch coordinates and speed/distance metrics will be null")
+        
+        self.team_classifier = None
+        if enable_team_classification:
+            print("Initializing team classifier...")
+            self.team_classifier = TeamClassifier(n_teams=2, early_frames_count=300)
         
         # Results storage
         self.detections: List[Dict] = []
         self.performance_analyzer: Optional[PerformanceAnalyzer] = None
+        self.metadata: Dict = {}
+        self.warnings: List[str] = []
     
     def process_video(
         self,
@@ -86,6 +105,9 @@ class SoccerAnalyticsPipeline:
             annotate_video: Whether to write annotated video
             sample_ocr_every_n_frames: Run OCR every N frames (for performance)
         """
+        start_time = time.time()
+        start_timestamp = datetime.now().isoformat()
+        
         video_path = Path(video_path)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -101,8 +123,29 @@ class SoccerAnalyticsPipeline:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        duration_s = total_frames / fps if fps > 0 else 0
         
-        print(f"Video info: {total_frames} frames @ {fps} FPS, {width}x{height}")
+        print(f"Video info: {total_frames} frames @ {fps} FPS, {width}x{height}, duration: {duration_s:.1f}s")
+        
+        # Initialize metadata
+        self.metadata = {
+            'pipeline_version': __version__,
+            'video_path': str(video_path),
+            'fps': fps,
+            'frame_count': total_frames,
+            'duration_s': round(duration_s, 2),
+            'resolution': f"{width}x{height}",
+            'model_path': self.model_path,
+            'device': self.device,
+            'calibration': self.config.calibration_source or 'none',
+            'start_timestamp': start_timestamp,
+            'warnings': []
+        }
+        
+        if not self.homography:
+            warning = "No calibration - pitch coordinates and speed/distance metrics will be null"
+            self.warnings.append(warning)
+            self.metadata['warnings'].append(warning)
         
         # Initialize performance analyzer
         self.performance_analyzer = PerformanceAnalyzer(
@@ -143,6 +186,10 @@ class SoccerAnalyticsPipeline:
                 track_id = person['track_id']
                 bbox = person['bbox']
                 
+                # Team classification (collect colors during early frames)
+                if self.team_classifier and frame_idx < self.team_classifier.early_frames_count:
+                    self.team_classifier.add_observation(track_id, frame, bbox)
+                
                 # OCR for jersey number (sample every N frames)
                 jersey_number = None
                 if self.ocr and frame_idx % sample_ocr_every_n_frames == 0:
@@ -167,7 +214,7 @@ class SoccerAnalyticsPipeline:
                             timestamp
                         )
                 
-                # Store detection
+                # Store detection (team/role will be filled later)
                 detection = {
                     'frame': frame_idx,
                     'timestamp': round(timestamp, 3),
@@ -180,7 +227,9 @@ class SoccerAnalyticsPipeline:
                     'confidence': round(person['confidence'], 3),
                     'pitch_x': round(pitch_coords[0], 2) if pitch_coords else None,
                     'pitch_y': round(pitch_coords[1], 2) if pitch_coords else None,
-                    'jersey_number': jersey_number
+                    'jersey_number': jersey_number,
+                    'team': None,  # Filled after team classification
+                    'role': 'player'  # Default, updated after classification
                 }
                 self.detections.append(detection)
             
@@ -203,9 +252,18 @@ class SoccerAnalyticsPipeline:
                     'confidence': round(ball['confidence'], 3),
                     'pitch_x': round(pitch_coords[0], 2) if pitch_coords else None,
                     'pitch_y': round(pitch_coords[1], 2) if pitch_coords else None,
-                    'jersey_number': None
+                    'jersey_number': None,
+                    'team': None,
+                    'role': 'ball'
                 }
                 self.detections.append(detection)
+            
+            # Fit team classifier after early frames
+            if self.team_classifier and frame_idx == self.team_classifier.early_frames_count:
+                print("\nFitting team classifier...")
+                self.team_classifier.fit_teams()
+                self.team_classifier.assign_teams()
+                self.team_classifier.refine_with_voting(min_observations=10)
             
             # Annotate frame
             if writer:
@@ -222,6 +280,15 @@ class SoccerAnalyticsPipeline:
         
         print(f"\nProcessed {frame_idx} frames")
         
+        # Finalize team assignments
+        if self.team_classifier and self.team_classifier.fitted:
+            print("Finalizing team and role assignments...")
+            for detection in self.detections:
+                track_id = detection['track_id']
+                if track_id > 0:  # Not ball
+                    detection['team'] = self.team_classifier.get_team(track_id)
+                    detection['role'] = self.team_classifier.get_role(track_id)
+        
         # Finalize jersey numbers with majority voting
         if self.ocr:
             print("Finalizing jersey numbers with majority voting...")
@@ -237,7 +304,7 @@ class SoccerAnalyticsPipeline:
         print("Calculating player statistics...")
         player_stats = self.performance_analyzer.analyze_all_players()
         
-        # Add jersey numbers to stats
+        # Add jersey numbers, team, and role to stats
         if self.ocr:
             jersey_numbers = self.ocr.get_all_jersey_numbers()
             for stat in player_stats:
@@ -247,12 +314,46 @@ class SoccerAnalyticsPipeline:
             for stat in player_stats:
                 stat['jersey_number'] = None
         
+        # Add team and role to stats, exclude referees
+        filtered_stats = []
+        for stat in player_stats:
+            track_id = stat['track_id']
+            if self.team_classifier:
+                stat['team'] = self.team_classifier.get_team(track_id)
+                stat['role'] = self.team_classifier.get_role(track_id)
+                
+                # Exclude referees from player stats
+                if stat['role'] == 'referee':
+                    continue
+            else:
+                stat['team'] = None
+                stat['role'] = 'player'
+            
+            filtered_stats.append(stat)
+        
+        # Update metadata
+        end_time = time.time()
+        end_timestamp = datetime.now().isoformat()
+        runtime_s = end_time - start_time
+        
+        unique_tracks = len(set(d['track_id'] for d in self.detections if d['track_id'] > 0))
+        player_count = len(filtered_stats)
+        
+        self.metadata.update({
+            'end_timestamp': end_timestamp,
+            'runtime_s': round(runtime_s, 2),
+            'unique_tracks': unique_tracks,
+            'player_count': player_count,
+            'warnings': self.warnings
+        })
+        
         # Save outputs
-        self._save_outputs(output_dir, player_stats)
+        self._save_outputs(output_dir, filtered_stats)
         
         print(f"\nResults saved to: {output_dir}")
         if annotate_video:
             print(f"Annotated video: {output_video_path}")
+        print(f"Runtime: {runtime_s:.1f}s")
     
     def _annotate_frame(
         self,
@@ -324,3 +425,9 @@ class SoccerAnalyticsPipeline:
         df_stats = pd.DataFrame(player_stats)
         df_stats.to_csv(stats_csv_path, index=False)
         print(f"Saved player stats CSV: {stats_csv_path}")
+        
+        # Save metadata
+        meta_json_path = output_dir / "meta.json"
+        with open(meta_json_path, 'w') as f:
+            json.dump(self.metadata, f, indent=2)
+        print(f"Saved metadata JSON: {meta_json_path}")

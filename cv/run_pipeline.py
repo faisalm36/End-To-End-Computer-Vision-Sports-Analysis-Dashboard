@@ -5,6 +5,11 @@ import argparse
 import sys
 from pathlib import Path
 
+# Support both `python -m cv.run_pipeline` and `python cv/run_pipeline.py`
+if __name__ == '__main__' and __package__ is None:
+    # Running as script: add parent dir to path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from cv.config import Config
 from cv.pipeline import SoccerAnalyticsPipeline
 
@@ -79,7 +84,7 @@ def main():
     
     # Load config
     print("Initializing pipeline configuration...")
-    config = Config(calibration_path=args.calibration)
+    config = Config(calibration_path=args.calibration, use_default_if_missing=True)
     
     if not args.calibration:
         print("\nWarning: No calibration provided - pitch coordinates will not be computed.")

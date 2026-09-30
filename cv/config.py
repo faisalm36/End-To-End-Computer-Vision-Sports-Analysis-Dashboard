@@ -39,14 +39,29 @@ class Config:
     INJURY_RISK_LOW_SPRINTS = 20
     INJURY_RISK_HIGH_SPRINTS = 50
     
-    def __init__(self, calibration_path: Optional[str] = None):
-        """Initialize config with optional calibration."""
+    def __init__(self, calibration_path: Optional[str] = None, use_default_if_missing: bool = False):
+        """Initialize config with optional calibration.
+        
+        Args:
+            calibration_path: Path to calibration file
+            use_default_if_missing: Try default calibration if path not provided
+        """
         self.homography_matrix = None
         self.image_points = None
         self.pitch_points = None
+        self.calibration_source = None
         
         if calibration_path:
             self.load_calibration(calibration_path)
+            self.calibration_source = calibration_path
+        elif use_default_if_missing:
+            # Try default calibration
+            default_path = Path(__file__).parent / "config" / "default_calibration.json"
+            if default_path.exists():
+                print(f"Warning: Using default calibration from {default_path}")
+                print("Note: Calibration is per camera setup. Create a custom calibration for accurate results.")
+                self.load_calibration(str(default_path))
+                self.calibration_source = str(default_path)
     
     def load_calibration(self, path: str):
         """Load calibration from JSON or YAML file.

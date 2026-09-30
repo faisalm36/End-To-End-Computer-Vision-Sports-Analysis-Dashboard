@@ -18,29 +18,39 @@ This directory contains the computer vision pipeline for soccer video analytics,
    - Digits-only allowlist (0-9)
    - Majority voting across frames per track_id for robustness
 
-3. **Pitch Coordinate Mapping**
+3. **Team & Role Classification** ⭐ NEW in v1.1
+   - Automatic team assignment via jersey color clustering (KMeans on LAB color space)
+   - Referee detection based on color outliers
+   - Majority voting across frames for robustness
+   - Team field: 0, 1, or null (referee)
+   - Role field: player, referee, goalkeeper, ball
+
+4. **Pitch Coordinate Mapping**
    - OpenCV homography transformation from pixels to pitch meters
    - Configurable calibration via JSON/YAML (4+ point correspondences)
+   - Optional default calibration for quick testing
    - Default 105m × 68m FIFA pitch dimensions
    - Foot position (bottom bbox center) for players, bbox center for ball
+   - Graceful handling: outputs null for speed/distance when no calibration
 
-4. **Performance Metrics**
+5. **Performance Metrics**
    - **Speed**: Instantaneous and smoothed speed (mph), capped at plausible max
    - **Distance**: Total distance covered (km) with teleport filtering
    - **Injury Risk**: Low/Medium/High based on workload (distance, sprint count, high-speed running)
    - Per-player tracking: top_speed_mph, distance_km, sprint_count, high_speed_distance_km
 
-5. **Outputs**
-   - JSON & CSV for `tracking_detections` (frame-by-frame: track_id, bbox, pitch coords, jersey number)
-   - JSON & CSV for `player_match_stats` (per-player aggregates)
+6. **Outputs**
+   - JSON & CSV for `tracking_detections` (frame-by-frame: track_id, bbox, pitch coords, jersey number, team, role)
+   - JSON & CSV for `player_match_stats` (per-player aggregates, referees excluded)
+   - JSON for `meta.json` (pipeline metadata: fps, resolution, runtime, warnings)
    - Optional annotated output video
 
 ## Installation
 
 ### Prerequisites
 
-- **Python**: 3.11 or 3.12 recommended (3.13 may have compatibility issues with some dependencies)
-- **macOS** (Apple Silicon): The user's main machine uses `mps` device
+- **Python**: 3.11, 3.12, or 3.13 supported
+- **macOS** (Apple Silicon): Uses `mps` device for GPU acceleration
 - **CUDA** (Linux/Windows with GPU): Auto-detected if available
 
 ### Setup
@@ -50,7 +60,7 @@ This directory contains the computer vision pipeline for soccer video analytics,
 ```bash
 # From the project root
 cd cv
-python3.12 -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
@@ -59,8 +69,6 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
-
-**Note on Python 3.13**: If you encounter issues with `ultralytics`, `torch`, or `easyocr` on Python 3.13.1, use Python 3.11 or 3.12 instead. As of September 2026, these packages have best support for Python ≤3.12.
 
 3. **Download YOLO weights** (first run downloads automatically):
 
@@ -73,13 +81,17 @@ To use a fine-tuned model, specify `--model path/to/custom_model.pt`.
 ### Basic Command
 
 ```bash
+# Recommended: module invocation (works from any directory with PYTHONPATH set)
+python -m cv.run_pipeline --video path/to/video.mp4 --out outputs/
+
+# Alternative: direct script execution
 python cv/run_pipeline.py --video path/to/video.mp4 --out outputs/
 ```
 
 ### Full Options
 
 ```bash
-python cv/run_pipeline.py \
+python -m cv.run_pipeline \
   --video clip.mp4 \
   --out outputs/ \
   --calibration cv/config/example_calibration.json \
@@ -92,16 +104,20 @@ python cv/run_pipeline.py \
 **Arguments**:
 - `--video`: Path to input video (required)
 - `--out`: Output directory (required)
-- `--calibration`: Calibration file for pitch mapping (optional, see below)
+- `--calibration`: Calibration file for pitch mapping (optional, uses default if omitted with warning)
 - `--device`: Device for inference (`auto`, `cuda`, `mps`, `cpu`). Default: `auto` (detects GPU)
 - `--annotate`: Generate annotated video with bboxes overlaid
 - `--model`: YOLO model weights path (default: `yolov8x.pt`)
 - `--no-ocr`: Disable jersey number OCR (faster, but no numbers)
 - `--ocr-sample-rate`: Run OCR every N frames (default: 10, reduces overhead)
 
+**Note**: If `--calibration` is omitted, the pipeline will try to use `cv/config/default_calibration.json` if it exists. When no calibration is available, `pitch_x`, `pitch_y`, and speed/distance metrics will be `null` in outputs.
+
 ### Calibration Setup
 
-To enable pitch coordinate mapping, create a calibration file with 4+ point correspondences:
+**Important**: Calibration is **per camera setup**. A fixed camera at a venue can reuse the same calibration file across multiple matches, as long as the camera position and angle remain unchanged.
+
+To create a calibration file with 4+ point correspondences:
 
 1. Open the first frame of your video
 2. Identify 4+ landmarks (e.g., pitch corners, penalty box corners)
@@ -125,7 +141,9 @@ To enable pitch coordinate mapping, create a calibration file with 4+ point corr
 
 See `cv/config/example_calibration.json` for a template.
 
-**Without calibration**: Detection and tracking still work, but `pitch_x`/`pitch_y` and performance metrics will be `None`.
+**Default Calibration**: If no calibration is provided, the pipeline will attempt to use `cv/config/default_calibration.json`. This is useful for quick testing but should be replaced with a camera-specific calibration for accurate results.
+
+**Without calibration**: Detection and tracking still work, but `pitch_x`/`pitch_y` and performance metrics (speed/distance) will be `null`.
 
 ## Output Schema
 
@@ -143,21 +161,47 @@ Frame-by-frame detections matching the MySQL `tracking_detections` table:
 | `confidence` | float | Detection confidence (0.0 if interpolated) |
 | `pitch_x, pitch_y` | float | Pitch coordinates in meters (null if no calibration) |
 | `jersey_number` | int | Jersey number (null if OCR disabled or not detected) |
+| **`team`** ⭐ | int | Team assignment (0, 1, or null for referee) |
+| **`role`** ⭐ | str | Role: `player`, `referee`, `goalkeeper`, or `ball` |
 
 ### `player_match_stats.csv` / `.json`
 
-Per-player aggregates matching the MySQL `player_match_stats` table:
+Per-player aggregates matching the MySQL `player_match_stats` table (referees excluded):
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `track_id` | int | Player track ID |
 | `jersey_number` | int | Majority-voted jersey number |
-| `top_speed_mph` | float | Maximum speed in mph |
-| `distance_km` | float | Total distance covered in km |
+| `top_speed_mph` | float | Maximum speed in mph (null if no calibration) |
+| `distance_km` | float | Total distance covered in km (null if no calibration) |
 | `injury_risk` | str | `Low`, `Medium`, or `High` |
 | `high_speed_distance_km` | float | Distance at ≥15 mph |
 | `sprint_distance_km` | float | Distance at ≥18 mph |
 | `sprint_count` | int | Number of sprint bursts |
+| **`team`** ⭐ | int | Team assignment (0, 1, or null) |
+| **`role`** ⭐ | str | Role: `player`, `goalkeeper` (referees not included) |
+
+### `meta.json` ⭐ NEW
+
+Pipeline metadata and diagnostics:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pipeline_version` | str | Pipeline version (e.g., "1.1.0") |
+| `video_path` | str | Input video path |
+| `fps` | float | Video frames per second |
+| `frame_count` | int | Total frames processed |
+| `duration_s` | float | Video duration in seconds |
+| `resolution` | str | Video resolution (e.g., "1920x1080") |
+| `model_path` | str | YOLO model weights path |
+| `device` | str | Device used (cuda/mps/cpu) |
+| `calibration` | str | Calibration file used or "none" |
+| `start_timestamp` | str | Processing start time (ISO 8601) |
+| `end_timestamp` | str | Processing end time (ISO 8601) |
+| `runtime_s` | float | Total processing time in seconds |
+| `unique_tracks` | int | Number of unique tracks (players) |
+| `player_count` | int | Number of players in stats (excludes referees) |
+| `warnings` | list | List of warning messages |
 
 ## Fine-Tuning for Soccer
 
