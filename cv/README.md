@@ -168,34 +168,117 @@ Frame-by-frame detections matching the MySQL `tracking_detections` table:
 
 Per-player aggregates matching the MySQL `player_match_stats` table (referees excluded):
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `track_id` | int | Player track ID |
-| `jersey_number` | int | Majority-voted jersey number |
-| `top_speed_mph` | float | Maximum speed in mph (null if no calibration) |
-| `distance_km` | float | Total distance covered in km (null if no calibration) |
-| `injury_risk` | str | `Low`, `Medium`, or `High` |
-| `high_speed_distance_km` | float | Distance at ≥15 mph |
-| `sprint_distance_km` | float | Distance at ≥18 mph |
-| `sprint_count` | int | Number of sprint bursts |
-| **`team`** ⭐ | int | Team assignment (0, 1, or null) |
-| **`role`** ⭐ | str | Role: `player`, `goalkeeper` (referees not included) |
+| Column | Type | Unit | Description |
+|--------|------|------|-------------|
+| `track_id` | int | - | Player track ID |
+| `jersey_number` | int | - | Majority-voted jersey number |
+| `team` ⭐ | int | - | Team assignment (0, 1, or null) |
+| `role` ⭐ | str | - | Role: `player`, `goalkeeper` (referees not included) |
+| `top_speed_mph` | float | mph | Maximum sustained speed in mph (null if no calibration) |
+| `top_speed_kmh` | float | km/h | Maximum sustained speed in km/h (null if no calibration) |
+| `distance_km` | float | km | Total distance covered (null if no calibration) |
+| `minutes_played` | float | minutes | Time from first to last visible frame (null if no calibration) |
+| `visible_minutes` | float | minutes | Total time player was tracked (null if no calibration) |
+| `distance_per_min_m` | float | m/min | Distance per visible minute (null if no calibration) |
+| `avg_pitch_x` | float | meters | Average pitch X position (null if no calibration) |
+| `avg_pitch_y` | float | meters | Average pitch Y position (null if no calibration) |
+| `high_speed_distance_km` | float | km | Distance at ≥19.8 km/h (null if no calibration) |
+| `sprint_distance_km` | float | km | Distance at ≥25.2 km/h (null if no calibration) |
+| `hsr_count` | int | - | Number of high-speed running bursts ≥1s (null if no calibration) |
+| `sprint_count` | int | - | Number of sprint bursts ≥1s (null if no calibration) |
+| `hi_efforts_count` | int | - | Total high-intensity efforts (hsr_count + sprint_count, null if no calibration) |
+| `zone_walk_km` | float | km | Distance in walk zone (0-7 km/h, null if no calibration) |
+| `zone_jog_km` | float | km | Distance in jog zone (7-15 km/h, null if no calibration) |
+| `zone_run_km` | float | km | Distance in run zone (15-20 km/h, null if no calibration) |
+| `zone_hsr_km` | float | km | Distance in HSR zone (20-25 km/h, null if no calibration) |
+| `zone_sprint_km` | float | km | Distance in sprint zone (≥25 km/h, null if no calibration) |
+| `accel_count_high` | int | - | High acceleration events ≥3 m/s² for ≥0.7s (estimate, null if no calibration) |
+| `decel_count_high` | int | - | High deceleration events ≤-3 m/s² for ≥0.7s (estimate, null if no calibration) |
+| `coverage_pct` | float | % | Percentage of video frames player was tracked (null if no calibration) |
+| `injury_risk` | str | - | Injury risk category: `Low`, `Medium`, or `High` |
 
-### `meta.json` ⭐ NEW
+**Note on accelerations**: `accel_count_high` and `decel_count_high` are estimates based on smoothed velocity changes. They may overcount or undercount compared to GPS data due to detection noise and frame rate limitations.
+
+#### Version 1.2.0 Fields Summary
+
+The following fields were added in version 1.2.0 for comprehensive match analytics:
+
+**Speed & Distance**:
+- `top_speed_kmh`: Top speed in km/h (converted from mph)
+- `distance_per_min_m`: Distance efficiency metric
+
+**Temporal Coverage**:
+- `minutes_played`: Time span from first to last appearance
+- `visible_minutes`: Actual tracked time
+- `coverage_pct`: Percentage of video frames tracked
+
+**Spatial Position**:
+- `avg_pitch_x`, `avg_pitch_y`: Average position on pitch
+
+**High-Intensity Efforts**:
+- `hsr_count`: Count of high-speed running bursts ≥1s
+- `hi_efforts_count`: Total high-intensity efforts (HSR + sprints)
+
+**Speed Zone Distances**:
+- `zone_walk_km`: 0-7 km/h
+- `zone_jog_km`: 7-15 km/h
+- `zone_run_km`: 15-20 km/h
+- `zone_hsr_km`: 20-25 km/h
+- `zone_sprint_km`: ≥25 km/h
+
+**Acceleration Estimates**:
+- `accel_count_high`: High acceleration events (≥3 m/s²)
+- `decel_count_high`: High deceleration events (≤-3 m/s²)
+
+**Heatmaps** (separate file `heatmaps.json`):
+- 21×14 grid of time-in-cell for spatial visualization
+
+### `heatmaps.json`
+
+Spatial heatmaps for each player (only generated when calibration is available):
+
+```json
+{
+  "1": [
+    [0.0, 0.33, 1.2, ...],  // Row 0 (y=0)
+    [0.5, 2.1, 3.4, ...],   // Row 1 (y=~4.857m)
+    ...
+  ],
+  "2": [...],
+  ...
+}
+```
+
+**Structure**:
+- Top-level keys: track IDs (as strings)
+- Values: 2D arrays (lists of lists) with dimensions `[14 rows × 21 columns]`
+- Grid covers 105m × 68m pitch with 5m × ~4.857m cells
+- Each cell value: time spent in cell (seconds)
+- Grid coordinates:
+  - X (columns): 0 to 21, covering 0-105m (length)
+  - Y (rows): 0 to 14, covering 0-68m (width)
+
+### `meta.json` ⭐
 
 Pipeline metadata and diagnostics:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `pipeline_version` | str | Pipeline version (e.g., "1.1.0") |
+| `pipeline_version` | str | Pipeline version (e.g., "1.2.0") |
 | `video_path` | str | Input video path |
 | `fps` | float | Video frames per second |
 | `frame_count` | int | Total frames processed |
 | `duration_s` | float | Video duration in seconds |
 | `resolution` | str | Video resolution (e.g., "1920x1080") |
+| `width` | int | Video width in pixels |
+| `height` | int | Video height in pixels |
 | `model_path` | str | YOLO model weights path |
 | `device` | str | Device used (cuda/mps/cpu) |
 | `calibration` | str | Calibration file used or "none" |
+| `speed_preset` | str | Sprint/HSR preset used (e.g., "gps_standard") |
+| `hsr_threshold_kmh` | float | High-speed running threshold in km/h |
+| `sprint_threshold_kmh` | float | Sprint threshold in km/h |
+| `zone_edges_kmh` | dict | Speed zone boundaries: walk, jog, run, hsr (km/h) |
 | `start_timestamp` | str | Processing start time (ISO 8601) |
 | `end_timestamp` | str | Processing end time (ISO 8601) |
 | `runtime_s` | float | Total processing time in seconds |

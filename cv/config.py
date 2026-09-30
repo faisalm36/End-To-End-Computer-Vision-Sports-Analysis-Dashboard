@@ -48,6 +48,20 @@ class Config:
     INJURY_RISK_LOW_SPRINTS = 20
     INJURY_RISK_HIGH_SPRINTS = 50
     
+    # Speed zone thresholds (km/h) - configurable, written to meta.json
+    ZONE_WALK_KMH = 7.0
+    ZONE_JOG_KMH = 15.0
+    ZONE_RUN_KMH = 20.0
+    ZONE_HSR_KMH = 25.0
+    # Sprint zone: >= ZONE_HSR_KMH
+    
+    # Acceleration/deceleration thresholds
+    ACCEL_HIGH_MS2 = 3.0  # High acceleration/deceleration threshold
+    ACCEL_DWELL_S = 0.7  # Minimum duration for accel/decel event
+    
+    # Heatmap grid configuration
+    HEATMAP_GRID = (21, 14)  # 21 cells x 14 cells = 5m x ~4.857m cells
+    
     def __init__(self, calibration_path: Optional[str] = None, use_default_if_missing: bool = False):
         """Initialize config with optional calibration.
         

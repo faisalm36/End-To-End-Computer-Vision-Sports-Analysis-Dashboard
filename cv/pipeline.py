@@ -18,7 +18,7 @@ from .metrics import PerformanceAnalyzer
 from .team_classifier import TeamClassifier
 
 # Pipeline version
-__version__ = "1.1.2"
+__version__ = "1.2.0"
 
 
 class SoccerAnalyticsPipeline:
@@ -160,13 +160,31 @@ class SoccerAnalyticsPipeline:
             sustained_speed_window_s=self.config.SUSTAINED_SPEED_WINDOW_S,
             high_speed_threshold_mph=self.config.HIGH_SPEED_THRESHOLD_MPH,
             sprint_threshold_mph=self.config.SPRINT_THRESHOLD_MPH,
-            speed_preset=self.config.SPEED_PRESET
+            speed_preset=self.config.SPEED_PRESET,
+            zone_walk_kmh=self.config.ZONE_WALK_KMH,
+            zone_jog_kmh=self.config.ZONE_JOG_KMH,
+            zone_run_kmh=self.config.ZONE_RUN_KMH,
+            zone_hsr_kmh=self.config.ZONE_HSR_KMH,
+            accel_high_ms2=self.config.ACCEL_HIGH_MS2,
+            accel_dwell_s=self.config.ACCEL_DWELL_S,
+            heatmap_grid=self.config.HEATMAP_GRID,
+            pitch_length_m=self.config.PITCH_LENGTH_M,
+            pitch_width_m=self.config.PITCH_WIDTH_M,
+            total_video_frames=total_frames
         )
         
         # Add speed preset to metadata
         self.metadata['speed_preset'] = self.config.SPEED_PRESET
         self.metadata['hsr_threshold_kmh'] = round(self.config.HIGH_SPEED_THRESHOLD_MPH * 1.60934, 1)
         self.metadata['sprint_threshold_kmh'] = round(self.config.SPRINT_THRESHOLD_MPH * 1.60934, 1)
+        
+        # Add speed zone edges to metadata
+        self.metadata['zone_edges_kmh'] = {
+            'walk': self.config.ZONE_WALK_KMH,
+            'jog': self.config.ZONE_JOG_KMH,
+            'run': self.config.ZONE_RUN_KMH,
+            'hsr': self.config.ZONE_HSR_KMH
+        }
         
         # Video writer for annotation
         writer = None
@@ -432,6 +450,31 @@ class SoccerAnalyticsPipeline:
     
     def _save_outputs(self, output_dir: Path, player_stats: List[Dict]):
         """Save detection and statistics outputs."""
+        # If no calibration, nullify all physical metrics
+        if not self.homography:
+            for stat in player_stats:
+                stat['top_speed_mph'] = None
+                stat['top_speed_kmh'] = None
+                stat['distance_km'] = None
+                stat['minutes_played'] = None
+                stat['visible_minutes'] = None
+                stat['distance_per_min_m'] = None
+                stat['avg_pitch_x'] = None
+                stat['avg_pitch_y'] = None
+                stat['high_speed_distance_km'] = None
+                stat['sprint_distance_km'] = None
+                stat['hsr_count'] = None
+                stat['sprint_count'] = None
+                stat['hi_efforts_count'] = None
+                stat['zone_walk_km'] = None
+                stat['zone_jog_km'] = None
+                stat['zone_run_km'] = None
+                stat['zone_hsr_km'] = None
+                stat['zone_sprint_km'] = None
+                stat['accel_count_high'] = None
+                stat['decel_count_high'] = None
+                stat['coverage_pct'] = None
+        
         # Save detections as JSON
         detections_json_path = output_dir / "tracking_detections.json"
         with open(detections_json_path, 'w') as f:
@@ -455,6 +498,14 @@ class SoccerAnalyticsPipeline:
         df_stats = pd.DataFrame(player_stats)
         df_stats.to_csv(stats_csv_path, index=False)
         print(f"Saved player stats CSV: {stats_csv_path}")
+        
+        # Save heatmaps as JSON (only if calibration available)
+        if self.homography:
+            heatmaps = self.performance_analyzer.get_all_heatmaps()
+            heatmaps_json_path = output_dir / "heatmaps.json"
+            with open(heatmaps_json_path, 'w') as f:
+                json.dump(heatmaps, f, indent=2)
+            print(f"Saved heatmaps JSON: {heatmaps_json_path}")
         
         # Save metadata
         meta_json_path = output_dir / "meta.json"
