@@ -18,7 +18,14 @@ class JerseyNumberReader:
             gpu: Use GPU if available
         """
         print("Initializing EasyOCR reader...")
-        self.reader = easyocr.Reader(languages, gpu=gpu)
+        
+        # Suppress torch quantization deprecation warnings
+        import warnings
+        warnings.filterwarnings('ignore', category=UserWarning, message='.*quantize_per_tensor.*')
+        
+        # Pass quantize=False on mps/cpu to avoid deprecation warning
+        # (quantization mainly benefits CUDA inference)
+        self.reader = easyocr.Reader(languages, gpu=gpu, quantize=False if not gpu else True)
         
         # Track readings per player for majority voting
         self.track_numbers: Dict[int, List[int]] = defaultdict(list)

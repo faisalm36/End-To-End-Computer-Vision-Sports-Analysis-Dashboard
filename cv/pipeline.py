@@ -18,7 +18,7 @@ from .metrics import PerformanceAnalyzer
 from .team_classifier import TeamClassifier
 
 # Pipeline version
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 
 class SoccerAnalyticsPipeline:
@@ -76,8 +76,6 @@ class SoccerAnalyticsPipeline:
                 config.PITCH_WIDTH_M,
                 config.PITCH_LENGTH_M
             )
-        else:
-            print("Warning: No calibration provided - pitch coordinates and speed/distance metrics will be null")
         
         self.team_classifier = None
         if enable_team_classification:
@@ -135,12 +133,19 @@ class SoccerAnalyticsPipeline:
             'frame_count': total_frames,
             'duration_s': round(duration_s, 2),
             'resolution': f"{width}x{height}",
+            'width': width,
+            'height': height,
             'model_path': self.model_path,
             'device': self.device,
             'calibration': self.config.calibration_source or 'none',
             'start_timestamp': start_timestamp,
             'warnings': []
         }
+        
+        # Add calibration warnings
+        if self.config.calibration_warning:
+            self.warnings.append(self.config.calibration_warning)
+            self.metadata['warnings'].append(self.config.calibration_warning)
         
         if not self.homography:
             warning = "No calibration - pitch coordinates and speed/distance metrics will be null"
@@ -258,12 +263,15 @@ class SoccerAnalyticsPipeline:
                 }
                 self.detections.append(detection)
             
-            # Fit team classifier after early frames
-            if self.team_classifier and frame_idx == self.team_classifier.early_frames_count:
-                print("\nFitting team classifier...")
-                self.team_classifier.fit_teams()
-                self.team_classifier.assign_teams()
-                self.team_classifier.refine_with_voting(min_observations=10)
+            # Fit team classifier after early frames or at end for short clips
+            if self.team_classifier and not self.team_classifier.fitted:
+                # Fit at min(early_frames_count, total_frames - 1) or at end
+                fit_at_frame = min(self.team_classifier.early_frames_count, total_frames - 1)
+                if frame_idx >= fit_at_frame:
+                    print(f"\nFitting team classifier at frame {frame_idx}...")
+                    self.team_classifier.fit_teams()
+                    self.team_classifier.assign_teams()
+                    self.team_classifier.refine_with_voting(min_observations=5)  # Lower threshold for short clips
             
             # Annotate frame
             if writer:
@@ -280,14 +288,26 @@ class SoccerAnalyticsPipeline:
         
         print(f"\nProcessed {frame_idx} frames")
         
+        # Fit team classifier if not yet fitted (for very short clips)
+        if self.team_classifier and not self.team_classifier.fitted:
+            print("Fitting team classifier on collected frames...")
+            self.team_classifier.frame_count = frame_idx
+            self.team_classifier.fit_teams()
+            if self.team_classifier.fitted:
+                self.team_classifier.assign_teams()
+                self.team_classifier.refine_with_voting(min_observations=3)  # Very low for short clips
+        
         # Finalize team assignments
         if self.team_classifier and self.team_classifier.fitted:
             print("Finalizing team and role assignments...")
             for detection in self.detections:
                 track_id = detection['track_id']
                 if track_id > 0:  # Not ball
-                    detection['team'] = self.team_classifier.get_team(track_id)
-                    detection['role'] = self.team_classifier.get_role(track_id)
+                    team = self.team_classifier.get_team(track_id)
+                    role = self.team_classifier.get_role(track_id)
+                    detection['team'] = team
+                    # Ensure role is never 'unknown' in output
+                    detection['role'] = role if role != 'unknown' else 'player'
         
         # Finalize jersey numbers with majority voting
         if self.ocr:
@@ -318,9 +338,12 @@ class SoccerAnalyticsPipeline:
         filtered_stats = []
         for stat in player_stats:
             track_id = stat['track_id']
-            if self.team_classifier:
-                stat['team'] = self.team_classifier.get_team(track_id)
-                stat['role'] = self.team_classifier.get_role(track_id)
+            if self.team_classifier and self.team_classifier.fitted:
+                team = self.team_classifier.get_team(track_id)
+                role = self.team_classifier.get_role(track_id)
+                stat['team'] = team
+                # Ensure role is never 'unknown' in output
+                stat['role'] = role if role != 'unknown' else 'player'
                 
                 # Exclude referees from player stats
                 if stat['role'] == 'referee':

@@ -104,9 +104,13 @@ class TeamClassifier:
         
         self.frame_count += 1
     
-    def fit_teams(self):
-        """Fit KMeans on collected color observations from early frames."""
-        if self.fitted or self.frame_count < self.early_frames_count:
+    def fit_teams(self, min_samples: int = 4):
+        """Fit KMeans on collected color observations.
+        
+        Args:
+            min_samples: Minimum number of tracks needed to fit (default: 4, at least 2 per team)
+        """
+        if self.fitted:
             return
         
         # Collect all colors
@@ -120,7 +124,8 @@ class TeamClassifier:
                 all_colors.append(median_color)
                 track_ids.append(track_id)
         
-        if len(all_colors) < self.n_teams + 1:  # Need at least n_teams + referee
+        if len(all_colors) < min_samples:
+            print(f"Warning: Only {len(all_colors)} tracks with colors, need at least {min_samples}. Team classification skipped.")
             return
         
         # Fit KMeans
@@ -129,7 +134,7 @@ class TeamClassifier:
         self.kmeans.fit(X)
         
         self.fitted = True
-        print(f"Team clustering fitted on {len(all_colors)} players from first {self.frame_count} frames")
+        print(f"Team clustering fitted on {len(all_colors)} players from {self.frame_count} frames")
     
     def assign_teams(self, outlier_threshold: float = 1.5):
         """Assign teams to all tracks based on fitted KMeans.
@@ -189,9 +194,12 @@ class TeamClassifier:
             track_id: Player track ID
         
         Returns:
-            'player', 'referee', 'goalkeeper', or 'unknown'
+            'player' or 'referee' (goalkeeper detection not implemented)
         """
-        return self.track_roles.get(track_id, 'unknown')
+        role = self.track_roles.get(track_id, 'player')
+        # Note: Goalkeeper detection is not implemented
+        # All non-referee players are labeled as 'player'
+        return role
     
     def refine_with_voting(self, min_observations: int = 10):
         """Refine team assignments using majority voting across frames.

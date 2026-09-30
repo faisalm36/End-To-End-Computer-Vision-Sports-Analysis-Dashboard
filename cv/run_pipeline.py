@@ -86,13 +86,7 @@ def main():
     print("Initializing pipeline configuration...")
     config = Config(calibration_path=args.calibration, use_default_if_missing=True)
     
-    if not args.calibration:
-        print("\nWarning: No calibration provided - pitch coordinates will not be computed.")
-        print("To enable pitch coordinates, create a calibration file with 4+ point correspondences.")
-        print("Example format:")
-        import json
-        print(json.dumps(config.get_example_calibration(), indent=2))
-        print()
+    # Pipeline will handle warnings in meta.json
     
     # Initialize pipeline
     pipeline = SoccerAnalyticsPipeline(

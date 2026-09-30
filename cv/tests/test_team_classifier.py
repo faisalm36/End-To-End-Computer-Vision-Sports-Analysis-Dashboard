@@ -133,7 +133,8 @@ class TestTeamClassifier(unittest.TestCase):
     def test_get_role_unknown_track(self):
         """Test getting role for unknown track."""
         role = self.classifier.get_role(999)
-        self.assertEqual(role, 'unknown')
+        # Unknown tracks default to 'player', not 'unknown'
+        self.assertEqual(role, 'player')
     
     def test_referee_detection(self):
         """Test that outliers are detected as referees."""

@@ -50,6 +50,7 @@ class Config:
         self.image_points = None
         self.pitch_points = None
         self.calibration_source = None
+        self.calibration_warning = None  # Store warning for meta.json
         
         if calibration_path:
             self.load_calibration(calibration_path)
@@ -58,8 +59,8 @@ class Config:
             # Try default calibration
             default_path = Path(__file__).parent / "config" / "default_calibration.json"
             if default_path.exists():
-                print(f"Warning: Using default calibration from {default_path}")
-                print("Note: Calibration is per camera setup. Create a custom calibration for accurate results.")
+                self.calibration_warning = f"Using default calibration from {default_path.name} - create custom calibration for accurate results"
+                print(f"Warning: {self.calibration_warning}")
                 self.load_calibration(str(default_path))
                 self.calibration_source = str(default_path)
     

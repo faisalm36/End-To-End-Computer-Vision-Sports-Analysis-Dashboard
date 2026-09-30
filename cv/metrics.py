@@ -53,7 +53,7 @@ class PerformanceAnalyzer:
             positions: List of (x, y, t) tuples
         
         Returns:
-            List of speeds in mph
+            List of speeds in mph (uncapped for robust statistics)
         """
         if len(positions) < 2:
             return []
@@ -77,9 +77,7 @@ class PerformanceAnalyzer:
             # Convert to mph
             speed_mph = speed_ms * 2.23694
             
-            # Cap implausible speeds
-            speed_mph = min(speed_mph, self.max_plausible_speed_mph)
-            
+            # Don't cap here - let outlier detection handle implausible speeds
             speeds.append(speed_mph)
         
         return speeds
@@ -147,18 +145,41 @@ class PerformanceAnalyzer:
                 'max_speed_mph': 0.0
             }
         
-        # Distance covered at high speed
-        high_speed_frames = sum(1 for s in speeds if s >= self.high_speed_threshold_mph)
+        # Filter outliers: speeds above plausible max are likely detection errors
+        valid_speeds = [s for s in speeds if s <= self.max_plausible_speed_mph]
+        
+        if not valid_speeds:
+            # All speeds were outliers
+            return {
+                'high_speed_distance_km': 0.0,
+                'sprint_distance_km': 0.0,
+                'sprint_count': 0,
+                'max_speed_mph': 0.0
+            }
+        
+        # Use 95th percentile over a sustained window for robust top speed
+        # This filters single-frame spikes while keeping real bursts
+        if len(valid_speeds) >= 10:
+            # Sort and take 95th percentile
+            sorted_speeds = sorted(valid_speeds, reverse=True)
+            percentile_idx = int(len(sorted_speeds) * 0.05)  # Top 5%
+            robust_max_speed = sorted_speeds[percentile_idx]
+        else:
+            # For short sequences, just use max of valid speeds
+            robust_max_speed = max(valid_speeds)
+        
+        # Distance covered at high speed (use all valid speeds for distance calc)
+        high_speed_frames = sum(1 for s in valid_speeds if s >= self.high_speed_threshold_mph)
         high_speed_distance_m = high_speed_frames * (self.high_speed_threshold_mph / 2.23694) / self.fps
         
         # Distance covered sprinting
-        sprint_frames = sum(1 for s in speeds if s >= self.sprint_threshold_mph)
+        sprint_frames = sum(1 for s in valid_speeds if s >= self.sprint_threshold_mph)
         sprint_distance_m = sprint_frames * (self.sprint_threshold_mph / 2.23694) / self.fps
         
         # Count sprint bursts (consecutive frames above threshold)
         sprint_count = 0
         in_sprint = False
-        for speed in speeds:
+        for speed in valid_speeds:
             if speed >= self.sprint_threshold_mph:
                 if not in_sprint:
                     sprint_count += 1
@@ -170,7 +191,7 @@ class PerformanceAnalyzer:
             'high_speed_distance_km': high_speed_distance_m / 1000.0,
             'sprint_distance_km': sprint_distance_m / 1000.0,
             'sprint_count': sprint_count,
-            'max_speed_mph': max(speeds)
+            'max_speed_mph': robust_max_speed
         }
     
     def calculate_injury_risk(

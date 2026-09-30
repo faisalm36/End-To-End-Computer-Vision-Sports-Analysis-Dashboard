@@ -44,15 +44,65 @@ class TestPerformanceAnalyzer(unittest.TestCase):
         self.assertAlmostEqual(speeds[1], 2.237, delta=0.1)
     
     def test_speed_capping(self):
-        """Test that implausible speeds are capped."""
+        """Test that implausible speeds are filtered, not capped."""
         # Teleport 100 meters in 1 second (impossible)
         positions = [
             (0.0, 0.0, 0.0),
             (100.0, 0.0, 1.0)
         ]
         speeds = self.analyzer.calculate_speed(positions)
-        # Should be capped at max_plausible_speed_mph
-        self.assertLessEqual(speeds[0], 22.0)
+        # Should NOT be capped - raw calculation preserved
+        self.assertGreater(speeds[0], 22.0)
+        
+        # But workload metrics should filter it
+        metrics = self.analyzer.calculate_workload_metrics(speeds)
+        # Max speed should be 0 since all speeds were outliers
+        self.assertEqual(metrics['max_speed_mph'], 0.0)
+    
+    def test_real_top_speed_below_cap(self):
+        """Test that real top speed below cap is reported correctly."""
+        # Add realistic player movement to analyzer
+        track_id = 1
+        
+        # Move at ~10 mph: 10 mph = 4.47 m/s
+        # At 30 FPS, each frame is 1/30 s, so distance per frame = 4.47/30 = 0.149 m
+        for i in range(20):
+            self.analyzer.add_position(track_id, float(i) * 0.149, 0.0, float(i) / 30.0)
+        
+        # Add a burst to ~19 mph: 19 mph = 8.49 m/s, so 8.49/30 = 0.283 m per frame
+        self.analyzer.add_position(track_id, 19 * 0.149 + 0.283, 0.0, 20 / 30.0)
+        
+        # Analyze player
+        result = self.analyzer.analyze_player(track_id)
+        
+        self.assertIsNotNone(result)
+        # 95th percentile should give reasonable top speed, not capped at 22
+        # With mostly 10mph and one 19mph, 95th percentile will be around 10-15mph
+        self.assertLess(result['top_speed_mph'], 20.0)
+        self.assertGreater(result['top_speed_mph'], 8.0)  # At least above average
+    
+    def test_single_frame_spike_filtered(self):
+        """Test that single-frame spikes don't set top speed."""
+        track_id = 1
+        
+        # Steady 12 mph movement: 12 mph = 5.36 m/s, so 5.36/30 = 0.179 m per frame
+        for i in range(15):
+            self.analyzer.add_position(track_id, float(i) * 0.179, 0.0, float(i) / 30.0)
+        
+        # Add impossible spike (teleport 50m in one frame = 3350 mph!)
+        self.analyzer.add_position(track_id, 14 * 0.179 + 50.0, 0.0, 15 / 30.0)
+        
+        # Back to steady
+        self.analyzer.add_position(track_id, 14 * 0.179 + 50.0 + 0.179, 0.0, 16 / 30.0)
+        
+        # Analyze player
+        result = self.analyzer.analyze_player(track_id)
+        
+        self.assertIsNotNone(result)
+        # Should report ~12 mph (95th percentile), spike should be filtered out
+        # The spike will be > 22 mph cap, so filtered by valid_speeds
+        self.assertLess(result['top_speed_mph'], 15.0)
+        self.assertGreater(result['top_speed_mph'], 10.0)
     
     def test_distance_calculation(self):
         """Test total distance calculation."""
