@@ -142,8 +142,8 @@ class TestPerformanceAnalyzer(unittest.TestCase):
     def test_workload_metrics_no_sprints(self):
         """Test workload metrics with low speeds."""
         speeds = [5.0, 6.0, 5.5, 6.5, 5.0]  # All below high-speed threshold
-        # Create dummy positions for these speeds
-        positions = [(float(i), 0.0, float(i)/30.0) for i in range(len(speeds) + 1)]
+        # Create dummy positions for these speeds (4-tuple with is_detected)
+        positions = [(float(i), 0.0, float(i)/30.0, True) for i in range(len(speeds) + 1)]
         # Call calculate_workload_metrics with detected_flags
         detected_flags = [True] * len(speeds)
         metrics = self.analyzer.calculate_workload_metrics(speeds, detected_flags, positions)
@@ -171,8 +171,8 @@ class TestPerformanceAnalyzer(unittest.TestCase):
             16.0, 16.5, 17.0, 17.5, 18.0, 18.5, 19.0, 19.5, 20.0, 20.0,  # Continue (10 more = 30 total)
             10.0, 10.0, 10.0
         ]
-        # Create dummy positions
-        positions = [(float(i), 0.0, float(i)/30.0) for i in range(len(speeds) + 1)]
+        # Create dummy positions (4-tuple with is_detected)
+        positions = [(float(i), 0.0, float(i)/30.0, True) for i in range(len(speeds) + 1)]
         # Call calculate_workload_metrics with detected_flags
         detected_flags = [True] * len(speeds)
         metrics = self.analyzer.calculate_workload_metrics(speeds, detected_flags, positions)
