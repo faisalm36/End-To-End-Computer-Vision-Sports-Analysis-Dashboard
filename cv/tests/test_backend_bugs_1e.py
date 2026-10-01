@@ -41,29 +41,40 @@ class TestBackendBugs1e(unittest.TestCase):
         # Get team assignments
         teams = {track_id: classifier.get_team(track_id) for track_id in range(1, 7)}
         
-        # Count how many per team
-        team_a_count = sum(1 for t in teams.values() if t == 'A')
-        team_b_count = sum(1 for t in teams.values() if t == 'B')
+        # Count how many per team (teams are int: 0, 1, not 'A', 'B')
+        team_0_count = sum(1 for t in teams.values() if t == 0)
+        team_1_count = sum(1 for t in teams.values() if t == 1)
         team_none_count = sum(1 for t in teams.values() if t is None)
         
-        # Bug 1e investigation: Current behavior may produce unbalanced splits
-        # Root causes to investigate:
-        # - Torso crop extraction (might miss color regions)
-        # - LAB color space conversion (might compress color differences)
-        # - Per-tracklet median (might be biased by lighting)
-        # - KMeans initialization without kit priors (random seed variance)
+        # Bug 1e fix: Verify balanced split (3/3) for two clear color groups
+        # Root causes investigated:
+        # - Torso crop extraction (middle 60% height, middle 80% width)
+        # - LAB color space conversion (separates luminance from color)
+        # - Per-tracklet median (robust to lighting variance)
+        # - KMeans initialization (random_state=42 for determinism)
         
         # For now, just verify classifier runs and assigns teams
         self.assertTrue(classifier.fitted, "Classifier should be fitted")
         self.assertLessEqual(team_none_count, 1, 
                             f"At most 1 unassigned track (referee), got {team_none_count}")
         
-        # TODO: Improve to achieve balanced 3/3 split consistently
-        # Potential fixes:
-        # - Use full bbox instead of torso-only
-        # - Enhance color extraction (HSV + LAB combined)
-        # - Add kit priors for this test
-        # - Use deterministic KMeans seed
+        # Verify balanced split: 3+3 = 6, so each team should have exactly 3
+        # (unless one is referee, then 3+2 or 2+3)
+        if team_none_count == 0:
+            # No referee, expect exact 3/3
+            self.assertEqual(team_0_count, 3, 
+                           f"Expected 3 in team 0, got {team_0_count}")
+            self.assertEqual(team_1_count, 3, 
+                           f"Expected 3 in team 1, got {team_1_count}")
+        else:
+            # One referee, expect 3/2 or 2/3
+            total_assigned = team_0_count + team_1_count
+            self.assertEqual(total_assigned, 5, 
+                           f"Expected 5 assigned (6-1 referee), got {total_assigned}")
+            self.assertIn(team_0_count, [2, 3], 
+                         f"Expected 2 or 3 in team 0, got {team_0_count}")
+            self.assertIn(team_1_count, [2, 3], 
+                         f"Expected 2 or 3 in team 1, got {team_1_count}")
 
 
 if __name__ == '__main__':
