@@ -712,13 +712,14 @@ class SoccerAnalyticsPipeline:
         player_stats = convert_numpy(player_stats)
         self.metadata = convert_numpy(self.metadata)
         
-        # If no calibration, nullify all physical metrics
+        # If no calibration, nullify all physical (not temporal) metrics
+        # Bug fix 1c: Keep temporal metrics (visible_minutes, coverage_pct, minutes_played)
         if not self.homography:
             for stat in player_stats:
                 stat['top_speed_mph'] = None
                 stat['top_speed_kmh'] = None
                 stat['distance_km'] = None
-                stat['visible_minutes'] = None
+                # visible_minutes, minutes_played, coverage_pct are temporal → keep them
                 stat['distance_per_min_m'] = None if 'distance_per_min_m' in stat else None
                 stat['avg_pitch_x'] = None if 'avg_pitch_x' in stat else None
                 stat['avg_pitch_y'] = None if 'avg_pitch_y' in stat else None
@@ -736,7 +737,7 @@ class SoccerAnalyticsPipeline:
                 if 'accel_count_high' in stat:
                     stat['accel_count_high'] = None
                     stat['decel_count_high'] = None
-                stat['coverage_pct'] = None if 'coverage_pct' in stat else None
+                # coverage_pct is temporal → keep it
         
         # Save detections as JSON
         detections_json_path = output_dir / "tracking_detections.json"

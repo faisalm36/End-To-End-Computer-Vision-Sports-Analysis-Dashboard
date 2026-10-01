@@ -59,11 +59,16 @@ class PerformanceAnalyzer:
         self.sprint_threshold_mph = sprint_threshold_mph
         self.speed_preset = speed_preset
         
-        # Speed zones (km/h)
+        # Bug fix 1b: Derive zone edges from active HSR/sprint thresholds
+        # HSR zone starts at high_speed_threshold, sprint zone at sprint_threshold
+        hsr_threshold_kmh = high_speed_threshold_mph * 1.60934
+        sprint_threshold_kmh = sprint_threshold_mph * 1.60934
+        
+        # Speed zones (km/h): walk/jog configurable, run/HSR/sprint from thresholds
         self.zone_walk_kmh = zone_walk_kmh
         self.zone_jog_kmh = zone_jog_kmh
-        self.zone_run_kmh = zone_run_kmh
-        self.zone_hsr_kmh = zone_hsr_kmh
+        self.zone_run_kmh = hsr_threshold_kmh  # Run zone ends where HSR begins
+        self.zone_hsr_kmh = sprint_threshold_kmh  # HSR zone ends where sprint begins
         
         # Acceleration thresholds
         self.accel_high_ms2 = accel_high_ms2
@@ -219,16 +224,24 @@ class PerformanceAnalyzer:
         
         return total_distance_m / 1000.0  # Convert to km
     
-    def calculate_speed_zones(self, speeds_mph: List[float]) -> Dict[str, float]:
+    def calculate_speed_zones(
+        self,
+        speeds_mph: List[float],
+        positions: List[Tuple[float, float, float, bool]]
+    ) -> Dict[str, float]:
         """Calculate distance covered in each speed zone.
+        
+        Bug fix 1a: Sum actual per-frame distances by instantaneous speed,
+        so sum(zones) == distance_km within rounding.
         
         Args:
             speeds_mph: List of speeds in mph
+            positions: List of (x, y, t, is_detected) tuples
         
         Returns:
             Dict with zone distances in km
         """
-        if not speeds_mph:
+        if not speeds_mph or len(positions) < 2:
             return {
                 'zone_walk_km': 0.0,
                 'zone_jog_km': 0.0,
@@ -240,31 +253,44 @@ class PerformanceAnalyzer:
         # Convert speeds to km/h
         speeds_kmh = [s * 1.60934 for s in speeds_mph]
         
-        # Count frames in each zone
-        walk_frames = sum(1 for s in speeds_kmh if s < self.zone_walk_kmh)
-        jog_frames = sum(1 for s in speeds_kmh if self.zone_walk_kmh <= s < self.zone_jog_kmh)
-        run_frames = sum(1 for s in speeds_kmh if self.zone_jog_kmh <= s < self.zone_run_kmh)
-        hsr_frames = sum(1 for s in speeds_kmh if self.zone_run_kmh <= s < self.zone_hsr_kmh)
-        sprint_frames = sum(1 for s in speeds_kmh if s >= self.zone_hsr_kmh)
+        # Calculate per-frame distances
+        frame_distances_m = []
+        for i in range(1, len(positions)):
+            x1, y1, _, _ = positions[i - 1]
+            x2, y2, _, _ = positions[i]
+            dist_m = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            frame_distances_m.append(dist_m)
         
-        # Estimate distance: average speed in zone * time
-        dt = 1.0 / self.fps
+        # Sum distances by zone (speeds list is one shorter than positions)
+        zone_walk_m = 0.0
+        zone_jog_m = 0.0
+        zone_run_m = 0.0
+        zone_hsr_m = 0.0
+        zone_sprint_m = 0.0
         
-        def zone_distance_km(frame_count: int, min_kmh: float, max_kmh: float) -> float:
-            if frame_count == 0:
-                return 0.0
-            # Use midpoint of zone as average speed
-            avg_speed_kmh = (min_kmh + max_kmh) / 2.0
-            avg_speed_ms = avg_speed_kmh / 3.6
-            distance_m = avg_speed_ms * dt * frame_count
-            return distance_m / 1000.0
+        for i, speed_kmh in enumerate(speeds_kmh):
+            if i >= len(frame_distances_m):
+                break
+            
+            dist = frame_distances_m[i]
+            
+            if speed_kmh < self.zone_walk_kmh:
+                zone_walk_m += dist
+            elif speed_kmh < self.zone_jog_kmh:
+                zone_jog_m += dist
+            elif speed_kmh < self.zone_run_kmh:
+                zone_run_m += dist
+            elif speed_kmh < self.zone_hsr_kmh:
+                zone_hsr_m += dist
+            else:
+                zone_sprint_m += dist
         
         return {
-            'zone_walk_km': zone_distance_km(walk_frames, 0.0, self.zone_walk_kmh),
-            'zone_jog_km': zone_distance_km(jog_frames, self.zone_walk_kmh, self.zone_jog_kmh),
-            'zone_run_km': zone_distance_km(run_frames, self.zone_jog_kmh, self.zone_run_kmh),
-            'zone_hsr_km': zone_distance_km(hsr_frames, self.zone_run_kmh, self.zone_hsr_kmh),
-            'zone_sprint_km': zone_distance_km(sprint_frames, self.zone_hsr_kmh, self.zone_hsr_kmh + 10.0)
+            'zone_walk_km': zone_walk_m / 1000.0,
+            'zone_jog_km': zone_jog_m / 1000.0,
+            'zone_run_km': zone_run_m / 1000.0,
+            'zone_hsr_km': zone_hsr_m / 1000.0,
+            'zone_sprint_km': zone_sprint_m / 1000.0
         }
     
     def calculate_accelerations(
@@ -649,8 +675,8 @@ class PerformanceAnalyzer:
         # Workload metrics (now with detected flags)
         workload_metrics = self.calculate_workload_metrics(smoothed_speeds, detected_flags, positions)
         
-        # Speed zones
-        speed_zones = self.calculate_speed_zones(smoothed_speeds)
+        # Speed zones (now uses actual per-frame distances, bug fix 1a)
+        speed_zones = self.calculate_speed_zones(smoothed_speeds, positions)
         
         # Accelerations
         accel_count_high, decel_count_high = self.calculate_accelerations(positions)
@@ -667,14 +693,17 @@ class PerformanceAnalyzer:
             'track_id': track_id,
             'top_speed_mph': round(workload_metrics['max_speed_mph'], 2),
             'top_speed_kmh': round(workload_metrics['max_speed_mph'] * 1.60934, 2),
-            'distance_km': round(total_distance_km, 2),
+            'distance_km': round(total_distance_km, 3),  # Bug fix 1d: 3 decimals for km
+            'distance_m': round(total_distance_km * 1000.0, 1),  # Bug fix 1d: Higher precision
             'minutes_played': round(minutes_played, 2),
+            'minutes_played_s': round(minutes_played * 60.0, 1),  # Bug fix 1d: Seconds
             'visible_minutes': round(visible_minutes, 2),
+            'visible_minutes_s': round(visible_minutes * 60.0, 1),  # Bug fix 1d: Seconds
             'distance_per_min_m': round(distance_per_min_m, 2) if distance_per_min_m is not None else None,
             'avg_pitch_x': round(avg_pitch_x, 2),
             'avg_pitch_y': round(avg_pitch_y, 2),
-            'high_speed_distance_km': round(workload_metrics['high_speed_distance_km'], 2),
-            'sprint_distance_km': round(workload_metrics['sprint_distance_km'], 2),
+            'high_speed_distance_km': round(workload_metrics['high_speed_distance_km'], 3),  # Bug fix 1d: 3 decimals
+            'sprint_distance_km': round(workload_metrics['sprint_distance_km'], 3),  # Bug fix 1d: 3 decimals
             'hsr_count': workload_metrics['hsr_count'],
             'sprint_count': workload_metrics['sprint_count'],
             'hi_efforts_count': workload_metrics['hsr_count'] + workload_metrics['sprint_count'],

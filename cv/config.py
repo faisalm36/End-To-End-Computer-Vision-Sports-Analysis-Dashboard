@@ -67,9 +67,12 @@ class Config:
     # Speed zone thresholds (km/h) - configurable, written to meta.json
     ZONE_WALK_KMH = 7.0
     ZONE_JOG_KMH = 15.0
-    ZONE_RUN_KMH = 20.0
-    ZONE_HSR_KMH = 25.0
-    # Sprint zone: >= ZONE_HSR_KMH
+    # Bug fix 1b: Run/HSR zone edges derived from HSR/sprint thresholds
+    # Run zone: up to HSR threshold (19.8 km/h)
+    # HSR zone: HSR threshold to sprint threshold (19.8-25.2 km/h)
+    # Sprint zone: >= sprint threshold (25.2 km/h)
+    ZONE_RUN_KMH = HIGH_SPEED_THRESHOLD_MPH * 1.60934  # 12.3 mph = 19.8 km/h
+    ZONE_HSR_KMH = SPRINT_THRESHOLD_MPH * 1.60934  # 15.7 mph = 25.2 km/h
     
     # Acceleration/deceleration thresholds
     ACCEL_HIGH_MS2 = 3.0  # High acceleration/deceleration threshold
