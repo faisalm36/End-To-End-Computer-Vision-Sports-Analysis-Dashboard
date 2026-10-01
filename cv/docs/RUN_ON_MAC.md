@@ -15,6 +15,110 @@ Complete setup guide for macOS with Python 3.13 and Apple Silicon MPS accelerati
 
 ## 1. Repository Setup & PR Merge Order
 
+### Mac Folder Layout
+
+Your capstone folder `/Users/faisalmusa/End-To-EndCompVisionCapstoneProject` contains:
+- `backend/` - Backend server (NOT in GitHub repo, local only)
+- `frontend/` - Frontend app (NOT in GitHub repo, local only)
+- Potentially: `cv/` and other repo files (if already cloned)
+
+**Note**: `backend/` and `frontend/` are untracked and should NOT be committed to the repo.
+
+---
+
+### Case Detection: Is the Folder a Git Clone?
+
+Check if the capstone folder is already a git repository:
+
+```bash
+cd /Users/faisalmusa/End-To-EndCompVisionCapstoneProject
+git -C . rev-parse --is-inside-work-tree 2>/dev/null
+
+# Output:
+# - "true" = Case A (git clone exists)
+# - empty/error = Case B (not a git clone)
+```
+
+---
+
+### Case A: Folder IS a Git Clone
+
+If the capstone folder is already a git repository:
+
+```bash
+cd /Users/faisalmusa/End-To-EndCompVisionCapstoneProject
+
+# Fetch latest changes
+git fetch origin
+
+# Option 1: Checkout PR #2 directly (stacked branch)
+git checkout cursor/cv-pipeline-v2-commercial-quality-023d
+git pull origin cursor/cv-pipeline-v2-commercial-quality-023d
+
+# Option 2: After PRs merged to main
+git checkout main
+git pull origin main
+```
+
+**Important**: Git will NOT touch untracked files (`backend/`, `frontend/`). Your backend/frontend are safe.
+
+---
+
+### Case B: Folder is NOT a Git Clone
+
+If the capstone folder is not a git repo (only contains `backend/` and `frontend/`):
+
+**Option 1: Clone repo elsewhere and point env vars at it**
+
+```bash
+# Clone to a separate location
+cd ~
+git clone https://github.com/faisalm36/End-To-End-Computer-Vision-Sports-Analysis-Dashboard cv-pipeline
+cd cv-pipeline
+
+# Checkout PR #2
+git checkout cursor/cv-pipeline-v2-commercial-quality-023d
+git pull origin cursor/cv-pipeline-v2-commercial-quality-023d
+
+# Set up venv here
+python3.13 -m venv cv/venv
+source cv/venv/bin/activate
+pip install -r cv/requirements.txt
+```
+
+Then in `backend/.env`:
+```bash
+CV_PIPELINE_PATH=/Users/faisalmusa/cv-pipeline/cv/run_pipeline.py
+CV_PYTHON=/Users/faisalmusa/cv-pipeline/cv/venv/bin/python
+```
+
+**Option 2: Copy `cv/` into capstone folder**
+
+```bash
+# Clone temporarily
+cd /tmp
+git clone https://github.com/faisalm36/End-To-End-Computer-Vision-Sports-Analysis-Dashboard temp-cv
+cd temp-cv
+git checkout cursor/cv-pipeline-v2-commercial-quality-023d
+
+# Copy cv/ to capstone folder
+cp -r cv /Users/faisalmusa/End-To-EndCompVisionCapstoneProject/
+
+# Set up venv in capstone folder
+cd /Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv
+python3.13 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then in `backend/.env`:
+```bash
+CV_PIPELINE_PATH=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/run_pipeline.py
+CV_PYTHON=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/venv/bin/python
+```
+
+---
+
 ### Recommended Merge Strategy
 
 The soccer CV pipeline v2.0 is stacked on two PRs:
@@ -26,27 +130,14 @@ The soccer CV pipeline v2.0 is stacked on two PRs:
 
 1. Merge PR #1 into `main` first
 2. After PR #1 is merged, retarget PR #2 to `main` and merge it
+3. Then `git checkout main && git pull origin main`
 
-**Alternative** (if you want to test the combined stack before merging):
+**Alternative** (test combined stack before merging):
 ```bash
 # Merge PR #2 into PR #1's branch locally
 git checkout cursor/soccer-cv-pipeline-236d
 git merge cursor/cv-pipeline-v2-commercial-quality-023d
 # Test, then merge cursor/soccer-cv-pipeline-236d into main
-```
-
-### Clone/Pull Latest Code
-
-```bash
-cd /Users/faisalmusa/End-To-EndCompVisionCapstoneProject
-git pull origin main  # After PRs are merged
-```
-
-Or if testing the stacked branches:
-```bash
-git fetch origin
-git checkout cursor/cv-pipeline-v2-commercial-quality-023d
-git pull origin cursor/cv-pipeline-v2-commercial-quality-023d
 ```
 
 ---
@@ -211,29 +302,94 @@ python -m cv.run_pipeline \
 
 ## 7. Backend Integration (.env Configuration)
 
-**⚠️ Backend-specific variables** (confirm exact names/values against `backend/.env.example` or backend config):
+### Exact Backend v0.4.0 Contract
+
+The backend reads these environment variables from `backend/.env`:
 
 ```bash
-# Edit backend/.env
-CV_PIPELINE_MODE=real          # stub|real (use 'real' for actual processing)
+# ============================================================================
+# CV Pipeline Configuration (backend v0.4.0)
+# ============================================================================
+
+# Pipeline Mode
+# - auto: Use real pipeline if CV_PIPELINE_PATH exists, else stub if CV_PIPELINE_STUB=true, else fail
+# - real: Always use real pipeline, fail if CV_PIPELINE_PATH missing
+# - stub: Always use fake data (for testing without pipeline)
+CV_PIPELINE_MODE=real
+
+# Stub Mode Toggle (only used when CV_PIPELINE_MODE=auto)
+CV_PIPELINE_STUB=false
+
+# Path to cv/run_pipeline.py, the cv/ directory, or repo root
+# Default: <capstone root>/cv/run_pipeline.py
+CV_PIPELINE_PATH=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/run_pipeline.py
+
+# Python executable from cv venv (empty = use backend's python)
 CV_PYTHON=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/venv/bin/python
-CV_DEVICE=mps                  # mps|cpu|cuda
+
+# Device for inference
+# - auto: Auto-detect (MPS if available, else CUDA, else CPU)
+# - mps: Apple Silicon GPU
+# - cuda: NVIDIA GPU
+# - cpu: CPU only
+CV_DEVICE=mps
+
+# Model weights name or path (empty = pipeline default yolov8x.pt)
+CV_MODEL=
+
+# Calibration JSON path (empty = no --calibration flag passed)
+CV_CALIBRATION_PATH=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/calibration_match.json
+
+# Extra arguments (shlex-split, e.g. "--ocr-sample-rate 10" or "--no-ocr")
+CV_EXTRA_ARGS=
+
+# Timeout in seconds (default 14400 = 4 hours)
+CV_TIMEOUT_SECONDS=14400
+
+# Create unknown players in database (default true)
+CV_CREATE_UNKNOWN_PLAYERS=true
+
+# Output directory (default backend/uploads/cv_outputs)
+CV_OUTPUT_DIR=backend/uploads/cv_outputs
+```
+
+### Backend Invocation Details
+
+**Working directory**: Repository root (resolved from `CV_PIPELINE_PATH`)
+
+**PYTHONPATH**: Repository root prepended
+
+**Command**:
+```bash
+$CV_PYTHON -m cv.run_pipeline \
+  --video <absolute path to upload> \
+  --out <absolute path to CV_OUTPUT_DIR/video_<id>> \
+  --device $CV_DEVICE \
+  [--calibration <absolute path>] \
+  [--model $CV_MODEL] \
+  $CV_EXTRA_ARGS
+```
+
+**Output files** (all written to `--out` directory):
+- `tracking_detections.json` - Frame-by-frame detections
+- `player_match_stats.json` - Per-player statistics
+- `meta.json` - Pipeline metadata
+- `heatmaps.json` - Player heatmaps (empty `{}` if no calibration)
+- `pipeline.log` - Pipeline stdout/stderr (backend captures)
+
+**Progress tracking**: Backend parses lines matching `'Processing frames: N%'` from pipeline output for real-time progress display.
+
+### Recommended Mac Settings
+
+```bash
+CV_PIPELINE_MODE=real
+CV_PIPELINE_PATH=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/run_pipeline.py
+CV_PYTHON=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/venv/bin/python
+CV_DEVICE=mps
 CV_CALIBRATION_PATH=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/calibration_match.json
 ```
 
-**Note**: These variable names are **illustrative** based on coordinator guidance. Verify against your actual backend configuration files:
-- `backend/.env.example`
-- `backend/config.py` or similar backend config module
-
-The backend will invoke the pipeline as:
-```bash
-$CV_PYTHON -m cv.run_pipeline \
-  --video backend/uploads/<filename>.mp4 \
-  --out backend/results/<session_id>/ \
-  --calibration $CV_CALIBRATION_PATH \
-  --device $CV_DEVICE \
-  --model yolov8x.pt
-```
+**⚠️ Important**: Restart the backend after any `.env` changes (settings load at startup).
 
 ---
 

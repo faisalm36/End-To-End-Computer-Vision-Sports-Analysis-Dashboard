@@ -260,6 +260,7 @@ class SoccerAnalyticsPipeline:
         # Process frames
         frame_idx = 0
         pbar = tqdm(total=total_frames, desc="Processing frames")
+        last_progress_pct = -1  # For backend progress tracking
         
         # Track positions for tracklet data
         tracklet_positions: Dict[int, List[Tuple[float, float]]] = {}
@@ -269,6 +270,12 @@ class SoccerAnalyticsPipeline:
             ret, frame = cap.read()
             if not ret:
                 break
+            
+            # Backend progress tracking (emit "Processing frames: N%" for backend log parser)
+            current_progress_pct = int((frame_idx / total_frames) * 100)
+            if current_progress_pct > last_progress_pct:
+                print(f"Processing frames: {current_progress_pct}%", flush=True)
+                last_progress_pct = current_progress_pct
             
             timestamp = frame_idx / fps
             
@@ -450,6 +457,7 @@ class SoccerAnalyticsPipeline:
         
         # v2.0: Tracklet stitching to create stable player_uid
         if self.tracklet_stitcher and tracklet_positions:
+            print("Processing frames: 95%", flush=True)  # Backend progress (stitching stage)
             print("Stitching tracklets into stable player IDs...")
             
             # Add tracklets to stitcher
@@ -763,13 +771,18 @@ class SoccerAnalyticsPipeline:
         df_stats.to_csv(stats_csv_path, index=False)
         print(f"Saved player stats CSV: {stats_csv_path}")
         
-        # Save heatmaps as JSON (only if calibration available)
+        # Save heatmaps as JSON (always write, empty if no calibration for backend compatibility)
+        heatmaps_json_path = output_dir / "heatmaps.json"
         if self.homography:
             heatmaps = self.performance_analyzer.get_all_heatmaps()
-            heatmaps_json_path = output_dir / "heatmaps.json"
             with open(heatmaps_json_path, 'w') as f:
                 json.dump(heatmaps, f, indent=2)
             print(f"Saved heatmaps JSON: {heatmaps_json_path}")
+        else:
+            # Empty heatmaps for backend compatibility
+            with open(heatmaps_json_path, 'w') as f:
+                json.dump({}, f, indent=2)
+            print(f"Saved heatmaps JSON (empty, no calibration): {heatmaps_json_path}")
         
         # Save metadata
         meta_json_path = output_dir / "meta.json"
