@@ -19,10 +19,10 @@ Complete setup guide for macOS with Python 3.13 and Apple Silicon MPS accelerati
 
 Your capstone folder `/Users/faisalmusa/End-To-EndCompVisionCapstoneProject` contains:
 - `backend/` - Backend server (NOT in GitHub repo, local only)
-- `frontend/` - Frontend app (NOT in GitHub repo, local only)
+- `frontend/` - Frontend app (IS in GitHub repo)
 - Potentially: `cv/` and other repo files (if already cloned)
 
-**Note**: `backend/` and `frontend/` are untracked and should NOT be committed to the repo.
+**Note**: Only `backend/` is untracked. `frontend/` is part of the repository.
 
 ---
 
@@ -60,7 +60,7 @@ git checkout main
 git pull origin main
 ```
 
-**Important**: Git will NOT touch untracked files (`backend/`, `frontend/`). Your backend/frontend are safe.
+**Important**: Git will NOT touch untracked files (`backend/`). Your local backend is safe.
 
 ---
 
@@ -124,12 +124,12 @@ CV_PYTHON=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/venv/bin/pyth
 The soccer CV pipeline v2.0 is stacked on two PRs:
 
 - **PR #1** (`cursor/soccer-cv-pipeline-236d`): Base v1.2.0 features
-- **PR #2** (`cursor/cv-pipeline-v2-commercial-quality-023d`): v2.0 enhancements
+- **PR #2** (`cursor/cv-pipeline-v2-commercial-quality-023d`): v2.0 enhancements (base: PR #1)
 
-**Safest merge order**:
+**Recommended merge order** (avoids retargeting and squash conflicts):
 
-1. Merge PR #1 into `main` first
-2. After PR #1 is merged, retarget PR #2 to `main` and merge it
+1. **Merge PR #2 into PR #1's branch** on GitHub first (PR #2 base is already PR #1)
+2. **Merge PR #1 into `main`** with a merge commit (preserves both PR histories)
 3. Then `git checkout main && git pull origin main`
 
 **Alternative** (test combined stack before merging):
@@ -220,17 +220,19 @@ source cv/venv/bin/activate
 python -m unittest discover -s cv/tests -v
 ```
 
-**Expected result** (as of this build):
+**Expected result**:
 ```
-Ran 87 tests in X.XXs
+Ran X tests in X.XXs
 
 OK
 ```
 
 **All tests should pass**. If any fail, check:
-- Python version (`python --version` should show 3.13.x)
+- Python version (`python --version` should show 3.13.x or 3.12.x)
 - Dependencies installed correctly
 - No conflicting packages
+
+**Note**: Tests ran on Python 3.12 in the VM. Python 3.13 on Mac is the first real 3.13 run. If `pip install` fails on 3.13, likely culprits are `easyocr`, `networkx`, or `scikit-learn`. Try installing them individually to isolate issues.
 
 ---
 
@@ -401,20 +403,26 @@ Run a quick test on a short clip:
 cd /Users/faisalmusa/End-To-EndCompVisionCapstoneProject
 source cv/venv/bin/activate
 
-# Use yolov8n (fast) on a 10-second clip
+# Find a video in backend/uploads
+ls backend/uploads/
+
+# Run quick test with yolov8n (fast) and no OCR
 python -m cv.run_pipeline \
-  --video backend/uploads/test_clip_10s.mp4 \
+  --video backend/uploads/<filename>.mp4 \
   --out cv/smoke_test/ \
   --model yolov8n.pt \
+  --no-ocr \
   --device mps
 ```
-
-**Expected time**: 5-10 seconds for 10s of video (30 fps)
 
 **Check outputs**:
 ```bash
 ls -lh cv/smoke_test/
-# Should see: meta.json, tracking_detections.json, player_match_stats.json
+# Should see: meta.json, tracking_detections.json, player_match_stats.json, heatmaps.json
+
+# Check runtime
+cat cv/smoke_test/meta.json | grep runtime_s
+# meta.json records runtime_s - measure on your hardware
 ```
 
 ---
@@ -470,16 +478,9 @@ If you see OOM (out of memory) errors:
 
 ## 10. Performance Expectations
 
-Approximate processing speeds on Apple Silicon:
+Performance depends on video resolution, enabled features (OCR, annotation), model size, and system load.
 
-| Model | Device | Relative Speed |
-|-------|--------|----------------|
-| yolov8n | MPS | ~15-20 fps |
-| yolov8s | MPS | ~10-15 fps |
-| yolov8m | MPS | ~8-12 fps |
-| yolov8x | MPS | ~5-8 fps |
-
-**Note**: Actual speed depends on video resolution, enabled features (OCR, annotation), and system load. Test on your hardware to determine real performance.
+**Measure on your hardware**. The `meta.json` output file records `runtime_s` for each run.
 
 ---
 

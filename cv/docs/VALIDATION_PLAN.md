@@ -354,13 +354,13 @@ Create `cv/validation/` with:
 
 | Test | Target | Status |
 |------|--------|--------|
-| Sprint Distance Error | < 5% | ⬜ Not measured |
-| Detection F1 Score | > 85% | ⬜ Not measured |
-| ID Switch Rate | < 2/min | ⬜ Not measured |
-| OCR Accuracy | > 80% | ⬜ Not measured |
-| Calibration Error | < 5px | ⬜ Not measured |
-| Metrica Position RMSE | < 1m | ⬜ Not measured |
-| Team Classification | > 90% | ⬜ Not measured |
+| Sprint Distance Error | TBD | ⬜ Not measured |
+| Detection F1 Score | TBD | ⬜ Not measured |
+| ID Switch Rate | TBD | ⬜ Not measured |
+| OCR Accuracy | TBD | ⬜ Not measured |
+| Calibration Error | TBD | ⬜ Not measured |
+| Metrica Position RMSE | TBD | ⬜ Not measured |
+| Team Classification | TBD | ⬜ Not measured |
 | End-to-End Completion | 100% | ⬜ Not measured |
 
 ---
