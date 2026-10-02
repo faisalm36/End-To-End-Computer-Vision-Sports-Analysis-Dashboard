@@ -758,6 +758,365 @@ class SoccerAnalyticsPipeline:
             print(f"Replay video: {output_dir / 'replay.mp4'}")
         print(f"Runtime: {runtime_s:.1f}s")
     
+    def process_video_for_target_tracking(
+        self,
+        video_path: str,
+        output_dir: str,
+        target_spec: 'TargetSpec',
+        progress_callback: callable = None
+    ) -> dict:
+        """Process video for target tracking with exact backend contract.
+        
+        Args:
+            video_path: Path to input video
+            output_dir: Output directory
+            target_spec: Target specification
+            progress_callback: Callback for progress (0-100%)
+        
+        Returns:
+            dict with 'success' (bool) and 'error_message' (str) if failed
+        """
+        import cv2
+        import numpy as np
+        from tqdm import tqdm
+        
+        start_time = time.time()
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Open video
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return {'success': False, 'error_message': f'Cannot open video: {video_path}'}
+        
+        fps = cap.get(cv2.CAP_PROP_FPS) or self.config.FPS_DEFAULT
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        if progress_callback:
+            progress_callback(0)
+        
+        # Run full pipeline first (detection, tracking, stitching, team/jersey)
+        self.detections = []
+        
+        # Process all frames (0-70% progress)
+        frame_idx = 0
+        tracklet_positions = {}
+        tracklet_frame_ranges = {}
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Progress 0-70%
+            if progress_callback and frame_idx % 30 == 0:
+                pct = int((frame_idx / total_frames) * 70)
+                progress_callback(pct)
+            
+            timestamp = frame_idx / fps
+            
+            # Detect and track
+            persons, _ = self.detector.detect_and_track(frame, frame_idx, imgsz=640)
+            
+            # Team classification (early frames)
+            if self.team_classifier and frame_idx < self.team_classifier.early_frames_count:
+                for person in persons:
+                    self.team_classifier.add_observation(person['track_id'], frame, person['bbox'])
+            
+            # OCR (sample every 10 frames)
+            if self.ocr and frame_idx % 10 == 0:
+                for person in persons:
+                    reading = self.ocr.read_jersey_number(frame, person['bbox'], conf_threshold=0.5)
+                    if reading:
+                        self.ocr.add_reading(person['track_id'], reading, team=None)
+            
+            # Store detections and track positions
+            for person in persons:
+                track_id = person['track_id']
+                bbox = person['bbox']
+                
+                pitch_coords = None
+                if self.homography:
+                    pitch_coords = self.homography.transform_foot_position(bbox)
+                    if pitch_coords:
+                        if track_id not in tracklet_positions:
+                            tracklet_positions[track_id] = []
+                            tracklet_frame_ranges[track_id] = (frame_idx, frame_idx)
+                        tracklet_positions[track_id].append((pitch_coords[0], pitch_coords[1]))
+                        tracklet_frame_ranges[track_id] = (tracklet_frame_ranges[track_id][0], frame_idx)
+                
+                detection = {
+                    'frame': frame_idx,
+                    'timestamp': round(timestamp, 3),
+                    'track_id': track_id,
+                    'class': 'player',
+                    'bbox_x1': round(bbox[0], 2),
+                    'bbox_y1': round(bbox[1], 2),
+                    'bbox_x2': round(bbox[2], 2),
+                    'bbox_y2': round(bbox[3], 2),
+                    'pitch_x': round(pitch_coords[0], 2) if pitch_coords else None,
+                    'pitch_y': round(pitch_coords[1], 2) if pitch_coords else None,
+                    'confidence': round(person['confidence'], 3),
+                    'team': None,
+                    'jersey_number': None
+                }
+                self.detections.append(detection)
+            
+            frame_idx += 1
+        
+        cap.release()
+        
+        if progress_callback:
+            progress_callback(70)
+        
+        # Fit team classifier (70-75%)
+        if self.team_classifier:
+            self.team_classifier.fit_teams()
+            if self.team_classifier.fitted:
+                self.team_classifier.assign_teams()
+                self.team_classifier.refine_with_voting(min_observations=3)
+                
+                # Detect goalkeepers
+                if tracklet_positions:
+                    self.team_classifier.detect_goalkeepers(tracklet_positions, self.config.PITCH_LENGTH_M)
+        
+        # Finalize jersey numbers (75-78%)
+        jersey_numbers = {}
+        if self.ocr:
+            jersey_numbers = self.ocr.get_all_jersey_numbers()
+        
+        # Tracklet stitching (78-80%)
+        player_uid_map = {}
+        if self.tracklet_stitcher and tracklet_positions:
+            for track_id in tracklet_positions.keys():
+                team = self.team_classifier.get_team(track_id) if self.team_classifier else None
+                jersey = jersey_numbers.get(track_id)
+                appearance = self.team_classifier.track_median_colors.get(track_id) if self.team_classifier else None
+                
+                positions_with_time = [(x, y, i / fps) for i, (x, y) in enumerate(tracklet_positions[track_id])]
+                
+                self.tracklet_stitcher.add_tracklet(
+                    track_id=track_id,
+                    team=team,
+                    jersey_number=jersey,
+                    appearance_vector=appearance,
+                    positions=positions_with_time,
+                    frame_range=tracklet_frame_ranges[track_id]
+                )
+            
+            track_to_player = self.tracklet_stitcher.stitch_tracklets()
+            for track_id, player_uid in track_to_player.items():
+                player_uid_map[track_id] = player_uid
+        
+        if progress_callback:
+            progress_callback(80)
+        
+        # Build maps for target resolution
+        team_map = {}
+        appearance_map = {}
+        
+        if self.team_classifier and self.team_classifier.fitted:
+            for track_id in self.team_classifier.track_votes.keys():
+                team = self.team_classifier.get_team(track_id)
+                if team is not None:
+                    team_map[track_id] = team
+                appearance = self.team_classifier.track_median_colors.get(track_id)
+                if appearance is not None:
+                    appearance_map[track_id] = appearance
+        
+        # Resolve target (80-82%)
+        from cv.target_tracking import TargetTracker
+        
+        tracker = TargetTracker(
+            max_speed_ms=self.config.MAX_PLAYER_SPEED_MS,
+            fps=fps,
+            appearance_threshold=0.7,
+            motion_gate_multiplier=1.5,
+            occlusion_max_frames=30
+        )
+        
+        success, error = tracker.resolve_target(
+            target_spec,
+            self.detections,
+            player_uid_map=player_uid_map,
+            team_map=team_map,
+            jersey_map=jersey_numbers,
+            appearance_map=appearance_map
+        )
+        
+        if not success:
+            # Check if ambiguous (multiple matches)
+            if "Ambiguous" in error and target_spec.target_jersey is not None:
+                # Find candidates with this jersey
+                candidates = []
+                for track_id, jersey in jersey_numbers.items():
+                    if jersey == target_spec.target_jersey:
+                        team_int = team_map.get(track_id)
+                        team_label = "A" if team_int == 0 else ("B" if team_int == 1 else None)
+                        player_uid = player_uid_map.get(track_id, track_id)
+                        candidates.append({
+                            'player_uid': player_uid,
+                            'track_id': track_id,
+                            'jersey_number': jersey,
+                            'team': team_label
+                        })
+                
+                return {
+                    'success': False,
+                    'error_type': 'target_not_found',
+                    'error_message': error,
+                    'candidates': candidates
+                }
+            else:
+                return {
+                    'success': False,
+                    'error_type': 'target_not_found',
+                    'error_message': error
+                }
+        
+        if progress_callback:
+            progress_callback(82)
+        
+        # Track target through all frames (82-90%)
+        target_frames = tracker.track_target(
+            self.detections,
+            fps,
+            team_map=team_map,
+            jersey_map=jersey_numbers,
+            appearance_map=appearance_map
+        )
+        
+        if progress_callback:
+            progress_callback(90)
+        
+        # Build track.json output (90-92%)
+        # Map status: tracked->tracked, occluded->interpolated, lost->lost, reacquired->tracked
+        track_json_frames = []
+        for frame_info in target_frames:
+            state = frame_info['state']
+            
+            # Map status
+            if state == 'tracked' or state == 'reacquired':
+                status = 'tracked'
+            elif state == 'occluded':
+                status = 'interpolated'
+            else:
+                status = 'lost'
+            
+            track_json_frames.append({
+                'frame': frame_info['frame'],
+                't': frame_info['t'],
+                'bbox': frame_info['bbox'],
+                'confidence': frame_info['confidence'],
+                'status': status,
+                # Additive fields
+                'state': state,
+                'pitch_x': frame_info.get('pitch_x'),
+                'pitch_y': frame_info.get('pitch_y')
+            })
+        
+        # Get team label (map 0/1 to A/B)
+        target_team_label = None
+        if tracker.target_team == 0:
+            target_team_label = "A"
+        elif tracker.target_team == 1:
+            target_team_label = "B"
+        
+        track_output = {
+            'fps': fps,
+            'width': width,
+            'height': height,
+            'total_frames': total_frames,
+            'target': {
+                'jersey_number': tracker.target_jersey,
+                'team': target_team_label,
+                'init_frame': target_spec.target_frame if target_spec.target_frame is not None else 0,
+                # Additive fields
+                'player_uid': tracker.target_player_uid,
+                'track_ids': tracker.target_track_ids
+            },
+            'frames': track_json_frames,
+            # Additive field
+            'schema_version': '1.0'
+        }
+        
+        track_path = output_dir / "track.json"
+        with open(track_path, 'w') as f:
+            json.dump(track_output, f, indent=2)
+        
+        if progress_callback:
+            progress_callback(92)
+        
+        # Build meta.json (92-94%)
+        stats = tracker.get_statistics(total_frames, fps)
+        lost_frame_count = total_frames - stats['tracked_frames']
+        
+        meta_output = {
+            'pipeline_version': '2.0.0',
+            'tracker': 'botsort',
+            'coverage_pct': round(stats['tracked_pct'], 2),
+            'lost_frames': lost_frame_count,
+            'warnings': tracker.warnings,
+            # Additive fields
+            'reacquisition_count': stats['reacquisition_count'],
+            'lost_segments': stats['lost_segments']
+        }
+        
+        meta_path = output_dir / "meta.json"
+        with open(meta_path, 'w') as f:
+            json.dump(meta_output, f, indent=2)
+        
+        if progress_callback:
+            progress_callback(94)
+        
+        # Render replay (94-100%)
+        replay_path = output_dir / "replay.mp4"
+        renderer = ReplayRenderer(
+            video_path=str(video_path),
+            target_frames=target_frames,
+            output_path=str(replay_path),
+            fps=fps,
+            target_jersey=tracker.target_jersey,
+            max_height=None,
+            show_speed=self.homography is not None,
+            trail_length=15,
+            preserve_audio=True
+        )
+        
+        def render_progress(pct):
+            if progress_callback:
+                # Map 0-100 to 94-100
+                backend_pct = 94 + int(pct * 0.06)
+                progress_callback(backend_pct)
+        
+        renderer.render(progress_callback=render_progress)
+        
+        if progress_callback:
+            progress_callback(100)
+        
+        # Optional: Save target_stats.json (additive)
+        # Get player stats from performance analyzer if available
+        # For now, just save basic stats
+        target_stats = {
+            'player_uid': tracker.target_player_uid,
+            'track_ids': tracker.target_track_ids,
+            'jersey_number': tracker.target_jersey,
+            'team': target_team_label,
+            'tracked_frames': stats['tracked_frames'],
+            'total_frames': total_frames,
+            'tracked_pct': stats['tracked_pct'],
+            'lost_segments': stats['lost_segments'],
+            'reacquisition_count': stats['reacquisition_count']
+        }
+        
+        target_stats_path = output_dir / "target_stats.json"
+        with open(target_stats_path, 'w') as f:
+            json.dump(target_stats, f, indent=2)
+        
+        return {'success': True}
+    
     def _aggregate_stats_by_player_uid(
         self,
         track_stats: List[Dict],
