@@ -55,6 +55,38 @@ def main():
         help='Device for inference (default: auto-detect)'
     )
     
+    # v2.0: Tracker options
+    parser.add_argument(
+        '--tracker',
+        type=str,
+        default='botsort',
+        choices=['botsort', 'bytetrack'],
+        help='Tracker type: botsort (default, with GMC) or bytetrack'
+    )
+    
+    # v2.0: Ball tracking options
+    parser.add_argument(
+        '--ball-model',
+        type=str,
+        default=None,
+        help='Path to fine-tuned ball detection model (optional, uses main model if not specified)'
+    )
+    
+    # v2.0: Kit and roster options
+    parser.add_argument(
+        '--kits',
+        type=str,
+        default=None,
+        help='Kit colours: JSON file (kits.json) or inline "#FF0000,#0000FF" (team_a,team_b hex RGB)'
+    )
+    
+    parser.add_argument(
+        '--roster',
+        type=str,
+        default=None,
+        help='Roster: JSON file (roster.json) or inline "1,2,3,10,11" (comma-separated jersey numbers)'
+    )
+    
     parser.add_argument(
         '--annotate',
         action='store_true',
@@ -84,7 +116,14 @@ def main():
     
     # Load config
     print("Initializing pipeline configuration...")
-    config = Config(calibration_path=args.calibration, use_default_if_missing=True)
+    config = Config(
+        calibration_path=args.calibration,
+        use_default_if_missing=True,
+        kits_path=args.kits,
+        roster_path=args.roster,
+        tracker=args.tracker,
+        device=args.device
+    )
     
     # Pipeline will handle warnings in meta.json
     
@@ -92,8 +131,10 @@ def main():
     pipeline = SoccerAnalyticsPipeline(
         config=config,
         model_path=args.model,
+        ball_model_path=args.ball_model,
         device=args.device,
-        enable_ocr=not args.no_ocr
+        enable_ocr=not args.no_ocr,
+        tracker=args.tracker
     )
     
     # Process video

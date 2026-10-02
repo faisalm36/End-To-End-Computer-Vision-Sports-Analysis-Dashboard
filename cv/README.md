@@ -1,49 +1,114 @@
-# Soccer Video Analytics - Computer Vision Pipeline
+# Soccer Video Analytics - Computer Vision Pipeline v2.0
 
-This directory contains the computer vision pipeline for soccer video analytics, including player/ball detection, tracking, jersey number OCR, pitch coordinate mapping, and performance metrics calculation.
+This directory contains the computer vision pipeline for soccer video analytics with enhanced tracking capabilities for single-camera amateur footage.
+
+## Version 2.0 Features
+
+**Pipeline v2.0** includes:
+
+- **BoT-SORT tracking** with Camera Motion Compensation (GMC) + ReID
+- **Dedicated ball tracker** with Kalman filtering + speed gating (35 m/s cap)
+- **RANSAC pitch calibration** with reprojection error gating + temporal smoothing
+- **Per-tracklet team classification** with kit colour priors + goalkeeper detection
+- **Legibility-filtered OCR** with confidence-weighted voting + roster constraints
+- **Offline tracklet stitching** for stable `player_uid` across ID switches
+- **Metrics improvements**: top speed from detected frames only, acceleration cap (6 m/s²)
+
+### Changes from v1.2.0
+
+| Feature | v1.2.0 | v2.0 |
+|---------|--------|------|
+| Tracker | ByteTrack | BoT-SORT with GMC (selectable) |
+| Ball tracking | Single-pass YOLO | Dedicated pass + Kalman filter + interpolation flags |
+| Calibration | Manual only | RANSAC + temporal smoothing + interactive tool |
+| Team classification | Early-frame clustering | Per-tracklet + kit priors + GK heuristic |
+| Jersey OCR | Simple voting | Legibility filter + confidence weighting + roster |
+| Player identity | `track_id` per clip | `player_uid` stitched across ID switches |
+| Top speed | All frames | `is_detected=True` frames only |
+| Acceleration | Uncapped | Capped at ±6.0 m/s² |
 
 ## Features
 
-1. **Detection & Tracking**
-   - YOLOv8-based player, referee, and ball detection (pretrained COCO weights)
-   - ByteTrack multi-object tracking for persistent player IDs
-   - Ball interpolation for short gaps when occluded
-   - Configurable confidence/IoU thresholds per class
-   - Higher inference resolution for small ball detection
-   - Optional pitch mask/ROI filtering to exclude non-pitch people
+## Features
 
-2. **Jersey Number OCR**
-   - EasyOCR-based number recognition on player torso crops
-   - Preprocessing: CLAHE contrast enhancement, resizing
-   - Digits-only allowlist (0-9)
-   - Majority voting across frames per track_id for robustness
+### 1. Detection & Tracking
 
-3. **Team & Role Classification** ⭐ NEW in v1.1
-   - Automatic team assignment via jersey color clustering (KMeans on LAB color space)
-   - Referee detection based on color outliers
-   - Majority voting across frames for robustness
-   - Team field: 0, 1, or null (referee)
-   - Role field: player, referee, goalkeeper, ball
+**v2.0: Enhanced with BoT-SORT + GMC**
 
-4. **Pitch Coordinate Mapping**
-   - OpenCV homography transformation from pixels to pitch meters
-   - Configurable calibration via JSON/YAML (4+ point correspondences)
-   - Optional default calibration for quick testing
-   - Default 105m × 68m FIFA pitch dimensions
-   - Foot position (bottom bbox center) for players, bbox center for ball
-   - Graceful handling: outputs null for speed/distance when no calibration
+- YOLOv8-based detection (COCO person/sports ball)
+- **BoT-SORT tracker** (default): Camera Motion Compensation (GMC) + ReID embeddings
+- **ByteTrack** (legacy): Selectable via `--tracker bytetrack`
+- Configurable confidence/IoU thresholds
+- Optional pitch mask/ROI filtering
 
-5. **Performance Metrics**
-   - **Speed**: Instantaneous and smoothed speed (mph), capped at plausible max
-   - **Distance**: Total distance covered (km) with teleport filtering
-   - **Injury Risk**: Low/Medium/High based on workload (distance, sprint count, high-speed running)
-   - Per-player tracking: top_speed_mph, distance_km, sprint_count, high_speed_distance_km
+### 2. Ball Tracking (v2.0)
 
-6. **Outputs**
-   - JSON & CSV for `tracking_detections` (frame-by-frame: track_id, bbox, pitch coords, jersey number, team, role)
-   - JSON & CSV for `player_match_stats` (per-player aggregates, referees excluded)
-   - JSON for `meta.json` (pipeline metadata: fps, resolution, runtime, warnings)
-   - Optional annotated output video
+**Dedicated ball pass with Kalman filtering**
+
+- **Tiled/sliced inference** for small ball detection (SAHI-style)
+- **4-state Kalman filter** (`[x, y, vx, vy]`) with constant-velocity model
+- **Speed gating**: Rejects jumps > 35 m/s (126 km/h)
+- **Linear interpolation** for short gaps (≤10 frames default)
+- **Detection flags**: `is_detected`, `is_interpolated` per frame
+
+### 3. Pitch Calibration (v2.0 Enhanced)
+
+**RANSAC-based homography with quality tracking**
+
+- **RANSAC** homography computation (outlier rejection, 5px threshold)
+- **Reprojection error** calculation and gating
+- **Temporal smoothing** (exponential moving average) for fixed cameras
+- **Interactive calibration tool**: `python cv/calibrate_interactive.py`
+- **Lens undistortion** interface (optional)
+- **Calibration quality** reported in `meta.json`: inliers, inlier_ratio, method
+
+### 4. Team & Role Classification (v2.0 Enhanced)
+
+**Per-tracklet clustering with kit priors + goalkeeper detection**
+
+- **Kit colour priors** (optional): `--kits team_a_rgb,team_b_rgb`
+- **Per-tracklet** majority colour (LAB/HSV torso extraction)
+- **Goalkeeper heuristic**: Position near goal + colour difference from outfield
+- Referee outlier detection
+- Fields: `team` (A/B/null), `role` (player/goalkeeper/referee/ball)
+
+### 5. Jersey Number OCR (v2.0 Enhanced)
+
+**Legibility-filtered with confidence-weighted voting**
+
+- **Legibility filter**: Sharpness (Laplacian variance), contrast (std dev), bbox size
+- **CLAHE enhancement** + torso crop preprocessing
+- **Confidence-weighted voting** per tracklet (not simple majority)
+- **Roster constraints** (optional): `--roster 1,2,3,10,11` per team
+- EasyOCR default, PARSeq pluggable
+
+### 6. Tracklet Stitching (v2.0)
+
+**Offline graph-based stitching for stable player_uid**
+
+- Matches short-term `track_id` into long-term `player_uid`
+- **Cost matrix**: Team agreement, jersey match, appearance cosine similarity
+- **Physical feasibility**: Distance ≤ $v_{\max} \cdot \Delta t$ (12 m/s default)
+- **NetworkX graph** matching for connected components
+- Output: `player_uid`, `contributing_track_ids[]` per player
+
+### 7. Performance Metrics (v2.0 Hygiene)
+
+**Robust metrics with detection-only speed + acceleration cap**
+
+- **Top speed**: Calculated from `is_detected=True` frames only (v2.0)
+- **Acceleration cap**: ±6.0 m/s² (filters teleports, v2.0)
+- **Tracking quality**: `detected_frames` / `total_frames` per player (v2.0)
+- Distance, speed zones (walk/jog/run/HSR/sprint)
+- High-intensity efforts (HSR count, sprint count)
+- Heatmaps (grid-based position density)
+
+### 8. Benchmark & Validation (v2.0)
+
+- **Metrica Sports** sample data evaluator (download on demand, CC BY 4.0)
+- **Real-clip validator** for sprint distance/time accuracy
+- `cv/benchmark/benchmark_speed_distance.py`
+- `cv/benchmark/validate_real_clip.py`
 
 ## Installation
 
@@ -86,6 +151,59 @@ python -m cv.run_pipeline --video path/to/video.mp4 --out outputs/
 
 # Alternative: direct script execution
 python cv/run_pipeline.py --video path/to/video.mp4 --out outputs/
+```
+
+### Quick Start (v2.0 defaults)
+
+```bash
+python -m cv.run_pipeline \
+  --video match.mp4 \
+  --out results/ \
+  --calibration calibration.json \
+  --model yolov8x.pt \
+  --device mps
+```
+
+**v2.0 defaults**: BoT-SORT tracking, dedicated ball pass, tracklet stitching ON, enhanced OCR/team classification.
+
+### v2.0 Advanced Options
+
+```bash
+python -m cv.run_pipeline \
+  --video match.mp4 \
+  --out results/ \
+  --calibration calibration.json \
+  --tracker botsort \
+  --ball-model yolov8x-ball-finetuned.pt \
+  --kits "#FF0000,#0000FF" \
+  --roster "1,2,3,10,11,17,23" \
+  --device mps
+```
+
+**New v2.0 flags**:
+- `--tracker {botsort,bytetrack}`: Tracker selection (default: `botsort`)
+- `--ball-model PATH`: Fine-tuned ball model (optional, defaults to `--model`)
+- `--kits "team_a_hex,team_b_hex"`: Kit colour priors, e.g., `"#FF0000,#0000FF"` (red, blue)
+- `--roster "N1,N2,..."`: Jersey roster per team (comma-separated numbers)
+
+### Interactive Calibration Tool (v2.0)
+
+```bash
+python cv/calibrate_interactive.py \
+  --video match.mp4 \
+  --output calibration.json
+```
+
+Click 4+ pitch points and enter pitch coordinates. RANSAC homography computed automatically.
+
+### Benchmark & Validation (v2.0)
+
+```bash
+# Download and inspect Metrica sample tracking data
+python cv/benchmark/benchmark_speed_distance.py
+
+# Validate against known sprint measurement
+python cv/benchmark/validate_real_clip.py results/ ground_truth.json
 ```
 
 ### Full Options
@@ -453,15 +571,7 @@ pip install scipy
 
 ## Performance Benchmarks
 
-Approximate processing speeds (on 1920×1080 video, yolov8x.pt):
-
-| Device | FPS Processed | Real-time Factor |
-|--------|---------------|------------------|
-| CPU (8-core) | ~2 FPS | 0.07x |
-| MPS (M2 Mac) | ~15 FPS | 0.5x |
-| CUDA (RTX 3090) | ~45 FPS | 1.5x |
-
-**Note**: OCR and annotated video output reduce speed by ~20-30%.
+Performance depends on hardware, model size, and video resolution. Test on your hardware to determine processing speed. OCR and annotated video output add overhead.
 
 ## Contact & Support
 

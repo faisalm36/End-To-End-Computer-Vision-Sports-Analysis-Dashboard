@@ -104,11 +104,11 @@ class TeamClassifier:
         
         self.frame_count += 1
     
-    def fit_teams(self, min_samples: int = 4):
+    def fit_teams(self, min_samples: int = 2):
         """Fit KMeans on collected color observations.
         
         Args:
-            min_samples: Minimum number of tracks needed to fit (default: 4, at least 2 per team)
+            min_samples: Minimum number of tracks needed to fit (default: 2, lowered from 4 for bug fix)
         """
         if self.fitted:
             return
@@ -125,8 +125,21 @@ class TeamClassifier:
                 track_ids.append(track_id)
         
         if len(all_colors) < min_samples:
-            print(f"Warning: Only {len(all_colors)} tracks with colors, need at least {min_samples}. Team classification skipped.")
+            warning = f"Team classification skipped: only {len(all_colors)} tracks (need >= {min_samples})"
+            print(f"Warning: {warning}")
+            # Store warning for meta.json
+            if not hasattr(self, 'warnings'):
+                self.warnings = []
+            self.warnings.append(warning)
             return
+        
+        # Warn if low confidence
+        if len(all_colors) < 4:
+            warning = f"Team classification: low confidence with only {len(all_colors)} tracks (recommend >= 4)"
+            print(f"Warning: {warning}")
+            if not hasattr(self, 'warnings'):
+                self.warnings = []
+            self.warnings.append(warning)
         
         # Fit KMeans
         X = np.array(all_colors)
