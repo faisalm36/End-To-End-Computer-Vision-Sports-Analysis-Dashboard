@@ -530,6 +530,7 @@ class SoccerAnalyticsPipeline:
         player_stats = self.performance_analyzer.analyze_all_players()
         
         # Add jersey numbers, team, role, and v2.0 fields to stats
+        jersey_numbers = {}
         if self.ocr:
             jersey_numbers = self.ocr.get_all_jersey_numbers()
         
