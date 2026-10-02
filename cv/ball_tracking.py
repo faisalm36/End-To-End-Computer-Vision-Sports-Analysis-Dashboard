@@ -54,6 +54,9 @@ class BallTracker:
         self.tile_overlap = tile_overlap
         self.imgsz = imgsz
         
+        # Statistics
+        self.ball_gated_count = 0  # Count of detections rejected by speed gating
+        
         # Auto-detect device
         if device == "auto":
             import torch
@@ -302,7 +305,7 @@ class BallTracker:
                     
                     # Reject if too fast
                     if distance > self.MAX_BALL_SPEED_PIXELFRAME * 2.0:  # Allow 2x margin
-                        print(f"Ball speed gating: rejected jump of {distance:.1f} px (max: {self.MAX_BALL_SPEED_PIXELFRAME*2:.1f})")
+                        self.ball_gated_count += 1
                         detection = None
             
             # Update Kalman filter with detection

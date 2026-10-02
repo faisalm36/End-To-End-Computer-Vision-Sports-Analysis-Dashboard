@@ -262,9 +262,12 @@ class SoccerAnalyticsPipeline:
         pbar = tqdm(total=total_frames, desc="Processing frames")
         last_progress_pct = -1  # For backend progress tracking
         
-        # Track positions for tracklet data
-        tracklet_positions: Dict[int, List[Tuple[float, float]]] = {}
+        # Track positions for tracklet data (with frame indices for accurate timestamps)
+        tracklet_positions: Dict[int, List[Tuple[float, float, int]]] = {}  # track_id -> [(x, y, frame), ...]
         tracklet_frame_ranges: Dict[int, Tuple[int, int]] = {}
+        
+        # Frame processing timing
+        frame_times = []
         
         while True:
             ret, frame = cap.read()
@@ -277,6 +280,7 @@ class SoccerAnalyticsPipeline:
                 print(f"Processing frames: {current_progress_pct}%", flush=True)
                 last_progress_pct = current_progress_pct
             
+            frame_start_time = time.time()
             timestamp = frame_idx / fps
             
             # v2.0: Detect and track with enhanced tracker
@@ -331,7 +335,7 @@ class SoccerAnalyticsPipeline:
                         if track_id not in tracklet_positions:
                             tracklet_positions[track_id] = []
                             tracklet_frame_ranges[track_id] = (frame_idx, frame_idx)
-                        tracklet_positions[track_id].append((pitch_coords[0], pitch_coords[1]))
+                        tracklet_positions[track_id].append((pitch_coords[0], pitch_coords[1], frame_idx))
                         tracklet_frame_ranges[track_id] = (
                             tracklet_frame_ranges[track_id][0],
                             frame_idx
@@ -401,6 +405,7 @@ class SoccerAnalyticsPipeline:
                 writer.write(annotated)
             
             frame_idx += 1
+            frame_times.append(time.time() - frame_start_time)
             pbar.update(1)
         
         pbar.close()
@@ -445,6 +450,7 @@ class SoccerAnalyticsPipeline:
                     detection['role'] = role if role != 'unknown' else 'player'
         
         # Finalize jersey numbers with weighted voting
+        jersey_numbers = {}
         if self.ocr:
             print("Finalizing jersey numbers with confidence-weighted voting...")
             jersey_numbers = self.ocr.get_all_jersey_numbers()
@@ -470,10 +476,11 @@ class SoccerAnalyticsPipeline:
                 if self.team_classifier and track_id in self.team_classifier.track_median_colors:
                     appearance = self.team_classifier.track_median_colors[track_id]
                 
-                # Get positions with timestamps
+                # Get positions with actual frame-based timestamps
+                # Bug fix: positions now include frame indices for accurate timestamps
                 positions_with_time = [
-                    (x, y, i / fps) 
-                    for i, (x, y) in enumerate(tracklet_positions[track_id])
+                    (x, y, frame / fps) 
+                    for x, y, frame in tracklet_positions[track_id]
                 ]
                 
                 self.tracklet_stitcher.add_tracklet(
@@ -488,12 +495,29 @@ class SoccerAnalyticsPipeline:
             # Stitch
             track_to_player = self.tracklet_stitcher.stitch_tracklets()
             
+            # Sanity check: warn if stitching collapsed too much
+            num_uids = len(set(track_to_player.values()))
+            num_tracks = len(track_to_player)
+            if num_uids < num_tracks * 0.3:  # UIDs < 30% of tracks
+                warning = f"Stitching: {num_uids} player UIDs from {num_tracks} tracks (potential over-stitching)"
+                print(f"Warning: {warning}")
+                self.warnings.append(warning)
+            
             # Update detections with player_uid
             for detection in self.detections:
                 track_id = detection['track_id']
                 if track_id > 0:  # Not ball
                     player_uid = track_to_player.get(track_id)
                     detection['player_uid'] = player_uid
+            
+            # Check coverage: how many player detections got a player_uid?
+            player_detections = [d for d in self.detections if d['track_id'] > 0]
+            detections_with_uid = [d for d in player_detections if d['player_uid'] is not None]
+            coverage_pct = 100.0 * len(detections_with_uid) / len(player_detections) if player_detections else 0.0
+            if coverage_pct < 50.0:
+                warning = f"Stitching: only {len(detections_with_uid)}/{len(player_detections)} player detections ({coverage_pct:.1f}%) assigned a player_uid"
+                print(f"Warning: {warning}")
+                self.warnings.append(warning)
         
         # Calculate player statistics (per player_uid if stitching, otherwise per track_id)
         print("Calculating player statistics...")
@@ -546,11 +570,22 @@ class SoccerAnalyticsPipeline:
         unique_tracks = len(set(d['track_id'] for d in self.detections if d['track_id'] > 0))
         player_count = len(filtered_stats)
         
+        # Add ball gating statistics
+        ball_gated_frames = self.ball_tracker.ball_gated_count if hasattr(self.ball_tracker, 'ball_gated_count') else 0
+        if ball_gated_frames > 0:
+            print(f"Ball speed gating: rejected {ball_gated_frames} detections")
+        
+        # Frame timing statistics
+        avg_frame_time = np.mean(frame_times) if frame_times else 0.0
+        print(f"Average per-frame processing time: {avg_frame_time*1000:.1f} ms")
+        
         self.metadata.update({
             'end_timestamp': end_timestamp,
             'runtime_s': round(runtime_s, 2),
+            'avg_frame_time_ms': round(avg_frame_time * 1000, 2),
             'unique_tracks': unique_tracks,
             'player_count': player_count,
+            'ball_gated_frames': ball_gated_frames,
             'warnings': self.warnings
         })
         
