@@ -26,36 +26,47 @@ def create_synthetic_video(output_path: str, total_frames: int = 300, fps: int =
     - Player 2 (red, jersey 7): Moves in circle
     - Player 3 (blue, jersey 3): Static in corner
     """
-    width, height = 640, 480
+    width, height = 1280, 720  # Higher res for better detection
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
     for frame_idx in range(total_frames):
-        # Create frame
-        frame = np.ones((height, width, 3), dtype=np.uint8) * 50  # Dark gray background
+        # Create frame with grass-like background
+        frame = np.ones((height, width, 3), dtype=np.uint8)
+        frame[:, :] = [40, 100, 40]  # Green grass (BGR)
         
-        # Player 1 (blue, jersey 10) - target player
+        # Add some texture
+        noise = np.random.randint(0, 20, (height, width, 3), dtype=np.uint8)
+        frame = cv2.add(frame, noise)
+        
+        # Player 1 (blue, jersey 10) - target player (person-sized)
         if frame_idx < 100 or frame_idx > 150:
             # Visible
-            x1 = int(50 + frame_idx * 2) % width
-            y1 = 200
-            color1 = (255, 100, 100)  # Blue (BGR)
-            cv2.rectangle(frame, (x1, y1), (x1 + 40, y1 + 80), color1, -1)
-            cv2.putText(frame, "10", (x1 + 10, y1 + 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            x1 = int(100 + frame_idx * 3) % (width - 80)
+            y1 = 300
+            # Draw person shape
+            cv2.ellipse(frame, (x1 + 40, y1 + 70), (35, 50), 0, 0, 180, (255, 150, 100), -1)  # Blue shirt
+            cv2.ellipse(frame, (x1 + 40, y1 + 20), (20, 25), 0, 0, 360, (200, 180, 160), -1)  # Head
+            cv2.rectangle(frame, (x1 + 10, y1 + 100), (x1 + 70, y1+ 140), (50, 50, 150), -1)  # Shorts
+            # Jersey number
+            cv2.putText(frame, "10", (x1 + 25, y1 + 80), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
         
         # Player 2 (red, jersey 7)
         angle = frame_idx * 0.05
-        x2 = int(width / 2 + 100 * np.cos(angle))
-        y2 = int(height / 2 + 80 * np.sin(angle))
-        color2 = (50, 50, 200)  # Red (BGR)
-        cv2.rectangle(frame, (x2, y2), (x2 + 40, y2 + 80), color2, -1)
-        cv2.putText(frame, "7", (x2 + 10, y2 + 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        x2 = int(width / 2 + 200 * np.cos(angle))
+        y2 = int(height / 2 + 150 * np.sin(angle))
+        # Draw person shape
+        cv2.ellipse(frame, (x2, y2 + 50), (35, 50), 0, 0, 180, (80, 80, 255), -1)  # Red shirt
+        cv2.ellipse(frame, (x2, y2), (20, 25), 0, 0, 360, (200, 180, 160), -1)  # Head
+        cv2.rectangle(frame, (x2 - 30, y2 + 80), (x2 + 30, y2 + 120), (50, 50, 150), -1)  # Shorts
+        cv2.putText(frame, "7", (x2 - 15, y2 + 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
         
         # Player 3 (blue, jersey 3)
-        x3, y3 = 500, 50
-        color3 = (255, 100, 100)  # Blue (BGR)
-        cv2.rectangle(frame, (x3, y3), (x3 + 40, y3 + 80), color3, -1)
-        cv2.putText(frame, "3", (x3 + 10, y3 + 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        x3, y3 = 1000, 100
+        cv2.ellipse(frame, (x3, y3 + 50), (35, 50), 0, 0, 180, (255, 150, 100), -1)  # Blue shirt
+        cv2.ellipse(frame, (x3, y3), (20, 25), 0, 0, 360, (200, 180, 160), -1)  # Head
+        cv2.rectangle(frame, (x3 - 30, y3 + 80), (x3 + 30, y3 + 120), (50, 50, 150), -1)  # Shorts
+        cv2.putText(frame, "3", (x3 - 15, y3 + 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
         
         writer.write(frame)
     
@@ -206,8 +217,8 @@ def main():
         track_dir = temp_dir / "track"
         track_dir.mkdir()
         
-        # Target player 1 at frame 10 (should be around x=70)
-        exit_code = run_track_player_bbox(video_path, str(track_dir), frame=10, bbox="70,200,110,280")
+        # Target player 1 at frame 10 (should be around x=130)
+        exit_code = run_track_player_bbox(video_path, str(track_dir), frame=10, bbox="130,300,210,440")
         
         if exit_code == 0:
             # Read track.json
