@@ -147,7 +147,10 @@ class SoccerAnalyticsPipeline:
         video_path: str,
         output_dir: str,
         annotate_video: bool = False,
-        sample_ocr_every_n_frames: int = 10
+        sample_ocr_every_n_frames: int = 10,
+        target_spec: Optional['TargetSpec'] = None,
+        render_replay: bool = False,
+        replay_max_height: Optional[int] = None,
     ):
         """Process video end-to-end with v2.0 features.
         
@@ -156,6 +159,9 @@ class SoccerAnalyticsPipeline:
             output_dir: Output directory for results
             annotate_video: Whether to write annotated video
             sample_ocr_every_n_frames: Run OCR every N frames (for performance)
+            target_spec: Optional target specification for single-player tracking
+            render_replay: Whether to render replay video (target mode)
+            replay_max_height: Maximum height for replay video downscaling
         """
         start_time = time.time()
         start_timestamp = datetime.now().isoformat()
@@ -589,12 +595,167 @@ class SoccerAnalyticsPipeline:
             'warnings': self.warnings
         })
         
+        # Target tracking mode
+        target_frames = None
+        target_stats = None
+        
+        if target_spec:
+            print("Processing frames: 90%", flush=True)  # Backend progress
+            print("\n=== Target Tracking Mode ===")
+            
+            from cv.target_tracking import TargetTracker
+            
+            # Create tracker
+            target_tracker = TargetTracker(
+                max_speed_ms=self.config.MAX_PLAYER_SPEED_MS,
+                fps=fps,
+                appearance_threshold=0.7,
+                color_similarity_threshold=0.6,
+                motion_gate_multiplier=1.5,
+                occlusion_max_frames=30
+            )
+            
+            # Build maps for resolution
+            player_uid_map = {}
+            team_map = {}
+            jersey_map = {}
+            appearance_map = {}
+            
+            if self.tracklet_stitcher:
+                for track_id in self.tracklet_stitcher.tracklets.keys():
+                    player_uid = self.tracklet_stitcher.get_player_uid(track_id)
+                    if player_uid:
+                        player_uid_map[track_id] = player_uid
+            
+            if self.team_classifier and self.team_classifier.fitted:
+                for track_id in self.team_classifier.track_votes.keys():
+                    team = self.team_classifier.get_team(track_id)
+                    if team is not None:
+                        team_map[track_id] = team
+            
+            if self.ocr:
+                jersey_numbers = self.ocr.get_all_jersey_numbers()
+                for track_id, jersey in jersey_numbers.items():
+                    if jersey:
+                        jersey_map[track_id] = jersey
+            
+            if self.team_classifier:
+                for track_id, color in self.team_classifier.track_median_colors.items():
+                    appearance_map[track_id] = color
+            
+            # Resolve target
+            print("Resolving target specification...")
+            success, error = target_tracker.resolve_target(
+                target_spec,
+                self.detections,
+                player_uid_map=player_uid_map,
+                team_map=team_map,
+                jersey_map=jersey_map,
+                appearance_map=appearance_map
+            )
+            
+            if not success:
+                print(f"Error: Failed to resolve target - {error}")
+                self.warnings.append(f"Target tracking failed: {error}")
+                self.metadata['warnings'].append(f"Target tracking failed: {error}")
+            else:
+                print(f"Target resolved: player_uid={target_tracker.target_player_uid}, "
+                      f"jersey={target_tracker.target_jersey}, team={target_tracker.target_team}")
+                
+                # Track target through all frames
+                print("Tracking target through video...")
+                target_frames = target_tracker.track_target(
+                    self.detections,
+                    fps,
+                    team_map=team_map,
+                    jersey_map=jersey_map,
+                    appearance_map=appearance_map
+                )
+                
+                # Get statistics
+                target_stats_dict = target_tracker.get_statistics(total_frames, fps)
+                
+                # Find player stats for target
+                target_player_stats = None
+                for stat in filtered_stats:
+                    if stat.get('player_uid') == target_tracker.target_player_uid:
+                        target_player_stats = stat
+                        break
+                
+                if target_player_stats:
+                    # Merge with tracking stats
+                    target_stats = {**target_player_stats, **target_stats_dict}
+                else:
+                    target_stats = target_stats_dict
+                
+                print(f"Target tracked: {target_stats['tracked_frames']}/{total_frames} frames "
+                      f"({target_stats['tracked_pct']:.1f}%), "
+                      f"{target_stats['reacquisition_count']} re-acquisitions")
+                
+                # Add target section to metadata
+                self.metadata['target'] = {
+                    'spec': target_spec.to_dict(),
+                    'resolved_player_uid': target_tracker.target_player_uid,
+                    'resolved_track_ids': target_tracker.target_track_ids,
+                    'jersey': target_tracker.target_jersey,
+                    'team': target_tracker.target_team,
+                    'tracked_pct': target_stats['tracked_pct'],
+                    'reacquisition_count': target_stats['reacquisition_count'],
+                    'lost_segments_count': len(target_stats['lost_segments'])
+                }
+                
+                if len(target_tracker.warnings) > 0:
+                    self.metadata['target']['warnings'] = target_tracker.warnings
+        
         # Save outputs
-        self._save_outputs(output_dir, filtered_stats)
+        self._save_outputs(
+            output_dir, 
+            filtered_stats,
+            target_frames=target_frames,
+            target_stats=target_stats
+        )
+        
+        # Render replay if requested
+        if render_replay and target_frames:
+            print("Processing frames: 95%", flush=True)  # Backend progress
+            print("\nRendering replay video...")
+            
+            from cv.replay_renderer import ReplayRenderer
+            
+            replay_path = output_dir / "replay.mp4"
+            
+            renderer = ReplayRenderer(
+                video_path=str(video_path),
+                target_frames=target_frames,
+                output_path=str(replay_path),
+                fps=fps,
+                target_jersey=target_tracker.target_jersey if target_spec else None,
+                max_height=replay_max_height,
+                show_speed=self.homography is not None,
+                trail_length=15,
+                preserve_audio=True
+            )
+            
+            def progress_callback(pct):
+                # Map 0-100 to 95-100 for backend progress
+                backend_pct = 95 + int(pct * 0.05)
+                print(f"Processing frames: {backend_pct}%", flush=True)
+            
+            renderer.render(progress_callback=progress_callback)
+            
+            print(f"Replay video saved: {replay_path}")
+            
+            # Verify H.264 encoding
+            self._verify_replay_codec(replay_path)
         
         print(f"\nResults saved to: {output_dir}")
         if annotate_video:
             print(f"Annotated video: {output_video_path}")
+        if target_frames:
+            print(f"Target track: {output_dir / 'target_track.json'}")
+            print(f"Target stats: {output_dir / 'target_stats.json'}")
+        if render_replay and target_frames:
+            print(f"Replay video: {output_dir / 'replay.mp4'}")
         print(f"Runtime: {runtime_s:.1f}s")
     
     def _aggregate_stats_by_player_uid(
@@ -732,7 +893,36 @@ class SoccerAnalyticsPipeline:
         
         return annotated
     
-    def _save_outputs(self, output_dir: Path, player_stats: List[Dict]):
+    def _verify_replay_codec(self, video_path: Path):
+        """Verify replay video is H.264 encoded properly."""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                 '-show_entries', 'stream=codec_name,pix_fmt',
+                 '-of', 'default=noprint_wrappers=1', str(video_path)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if 'codec_name=h264' not in result.stdout:
+                self.warnings.append(f"Warning: Replay video may not be H.264 encoded")
+            
+            if 'pix_fmt=yuv420p' not in result.stdout:
+                self.warnings.append(f"Warning: Replay video may not use yuv420p pixel format")
+        
+        except Exception as e:
+            # ffprobe not available, skip verification
+            pass
+    
+    def _save_outputs(
+        self, 
+        output_dir: Path, 
+        player_stats: List[Dict],
+        target_frames: Optional[List[Dict]] = None,
+        target_stats: Optional[Dict] = None
+    ):
         """Save detection and statistics outputs."""
         # Convert numpy types to native Python types for JSON serialization
         def convert_numpy(obj):
@@ -824,3 +1014,40 @@ class SoccerAnalyticsPipeline:
         with open(meta_json_path, 'w') as f:
             json.dump(self.metadata, f, indent=2)
         print(f"Saved metadata JSON: {meta_json_path}")
+        
+        # Save target tracking outputs (if in target mode)
+        if target_frames:
+            # Get video info from metadata
+            video_info = {
+                'width': self.metadata['width'],
+                'height': self.metadata['height'],
+                'fps': self.metadata['fps'],
+                'frame_count': self.metadata['frame_count']
+            }
+            
+            # Build target track output
+            target_track_output = {
+                'schema_version': '1.0',
+                'video': video_info,
+                'target': {
+                    'player_uid': self.metadata['target']['resolved_player_uid'],
+                    'track_ids': self.metadata['target']['resolved_track_ids'],
+                    'jersey': self.metadata['target']['jersey'],
+                    'team': self.metadata['target']['team'],
+                    'spec': self.metadata['target']['spec']
+                },
+                'frames': target_frames
+            }
+            
+            # Save target_track.json
+            target_track_path = output_dir / "target_track.json"
+            with open(target_track_path, 'w') as f:
+                json.dump(target_track_output, f, indent=2)
+            print(f"Saved target track JSON: {target_track_path}")
+        
+        if target_stats:
+            # Save target_stats.json
+            target_stats_path = output_dir / "target_stats.json"
+            with open(target_stats_path, 'w') as f:
+                json.dump(target_stats, f, indent=2)
+            print(f"Saved target stats JSON: {target_stats_path}")
