@@ -38,7 +38,7 @@ class TestHotfixTrackletBugs(unittest.TestCase):
         """Bug 2a: Tracklets with correct timestamps should stitch when feasible."""
         stitcher = TrackletStitcher(max_speed_ms=12.0, fps=30.0)
         
-        # Tracklet 1: appears in frames 0-30 (0-1 second)
+        # Tracklet 1: frames 0-30, x moves from 0 to 3m (ends at x=3m, t=1s)
         positions_track1 = [(float(i * 0.1), 0.0, float(i) / 30.0) for i in range(31)]
         stitcher.add_tracklet(
             track_id=1,
@@ -49,9 +49,9 @@ class TestHotfixTrackletBugs(unittest.TestCase):
             frame_range=(0, 30)
         )
         
-        # Tracklet 2: appears in frames 60-90 (2-3 seconds, 1 second gap)
-        # Position moves ~1m in 1 second gap (feasible at 12 m/s max)
-        positions_track2 = [(3.0 + float(i * 0.1), 0.0, 2.0 + float(i) / 30.0) for i in range(31)]
+        # Tracklet 2: frames 60-90, x moves from 14m to 17m (starts at x=14m, t=2s)
+        # Gap: 1s, distance: 14-3=11m, speed: 11 m/s < 12 m/s (FEASIBLE)
+        positions_track2 = [(14.0 + float(i * 0.1), 0.0, (60.0 + i) / 30.0) for i in range(31)]
         stitcher.add_tracklet(
             track_id=2,
             team=0,

@@ -33,7 +33,9 @@ class Config:
     BALL_MAX_GAP_FRAMES = 15  # Maximum gap to interpolate
     
     # General inference resolution
-    DEFAULT_IMGSZ = 640
+    # Bug fix: Raise to 1280 for better detection on high-res wide-angle footage (3456x2234, 1080p+)
+    # where players are small. Never exceeds source resolution.
+    DEFAULT_IMGSZ = 1280
     
     # OCR settings (v2.0: enhanced)
     OCR_CONF_THRESHOLD = 0.5

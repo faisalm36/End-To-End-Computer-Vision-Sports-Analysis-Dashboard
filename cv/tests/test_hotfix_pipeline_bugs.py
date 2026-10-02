@@ -90,12 +90,12 @@ class TestHotfixPipelineBugs(unittest.TestCase):
         meta_path = output_dir / "meta.json"
         self.assertTrue(meta_path.exists(), "meta.json should exist")
     
-    def test_bug2_tracklet_timestamps(self):
-        """Bug 2a: Tracklet timestamps should use actual frame indices, not enumerate indices."""
+    def test_bug2_tracklet_timestamps_feasible(self):
+        """Bug 2a: Tracklets with correct timestamps and feasible gap should stitch."""
         stitcher = TrackletStitcher(max_speed_ms=12.0, fps=30.0)
         
-        # Tracklet 1: appears in frames 0-30
-        positions_track1 = [(float(i), 0.0, float(i) / 30.0) for i in range(31)]
+        # Tracklet 1: frames 0-30, x moves from 0 to 3m (ends at x=3m, t=1s)
+        positions_track1 = [(float(i * 0.1), 0.0, float(i) / 30.0) for i in range(31)]
         stitcher.add_tracklet(
             track_id=1,
             team=0,
@@ -105,10 +105,9 @@ class TestHotfixPipelineBugs(unittest.TestCase):
             frame_range=(0, 30)
         )
         
-        # Tracklet 2: appears in frames 60-90 (1 second gap)
-        # With correct timestamps: should be stitchable (1s gap, short distance)
-        # With wrong enumerate timestamps: would appear to overlap or have wrong timing
-        positions_track2 = [(float(i), 1.0, float(i) / 30.0) for i in range(60, 91)]
+        # Tracklet 2: frames 60-90, x moves from 14m to 17m (starts at x=14m, t=2s)
+        # Gap: 1s, distance: 14-3=11m, speed: 11 m/s < 12 m/s (FEASIBLE)
+        positions_track2 = [(14.0 + float(i * 0.1), 0.0, (60.0 + i) / 30.0) for i in range(31)]
         stitcher.add_tracklet(
             track_id=2,
             team=0,
@@ -122,7 +121,40 @@ class TestHotfixPipelineBugs(unittest.TestCase):
         
         # These should be stitchable (same team, same jersey, feasible gap)
         self.assertEqual(track_to_player[1], track_to_player[2],
-                        "Tracklets with correct timestamps should stitch")
+                        "Tracklets with feasible gap should stitch")
+    
+    def test_bug2_tracklet_timestamps_infeasible(self):
+        """Bug 2a: Tracklets with infeasible gap should NOT stitch."""
+        stitcher = TrackletStitcher(max_speed_ms=12.0, fps=30.0)
+        
+        # Tracklet 1: frames 0-30, ends at x=30m, t=1s
+        positions_track1 = [(float(i), 0.0, float(i) / 30.0) for i in range(31)]
+        stitcher.add_tracklet(
+            track_id=1,
+            team=0,
+            jersey_number=10,
+            appearance_vector=None,
+            positions=positions_track1,
+            frame_range=(0, 30)
+        )
+        
+        # Tracklet 2: frames 60-90, starts at x=60m, t=2s
+        # Gap: 1s, distance: 60-30=30m, speed: 30 m/s > 12 m/s (INFEASIBLE)
+        positions_track2 = [(60.0 + float(i), 0.0, (60.0 + i) / 30.0) for i in range(31)]
+        stitcher.add_tracklet(
+            track_id=2,
+            team=0,
+            jersey_number=10,  # Same jersey
+            appearance_vector=None,
+            positions=positions_track2,
+            frame_range=(60, 90)
+        )
+        
+        track_to_player = stitcher.stitch_tracklets()
+        
+        # These should NOT be stitchable (physically infeasible gap)
+        self.assertNotEqual(track_to_player[1], track_to_player[2],
+                           "Tracklets with infeasible gap should not stitch")
     
     def test_bug2_singleton_tracklets_get_uid(self):
         """Bug 2b: All tracklets should get a player_uid, including singletons."""

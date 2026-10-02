@@ -193,6 +193,8 @@ class SoccerAnalyticsPipeline:
             'ball_model_path': self.ball_model_path,
             'device': self.device,
             'tracker': self.tracker,  # v2.0
+            'detection_imgsz': self.config.DEFAULT_IMGSZ,  # Inference resolution for player detection
+            'ball_detection_imgsz': self.config.BALL_IMGSZ,  # Inference resolution for ball detection
             'ball_tracking_method': 'tiled' if self.config.BALL_USE_TILING else 'simple',  # v2.0
             'tracklet_stitching_enabled': self.config.USE_TRACKLET_STITCHING,  # v2.0
             'calibration': self.config.calibration_source or 'none',
