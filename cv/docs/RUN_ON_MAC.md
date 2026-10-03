@@ -119,26 +119,11 @@ CV_PYTHON=/Users/faisalmusa/End-To-EndCompVisionCapstoneProject/cv/venv/bin/pyth
 
 ---
 
-### Recommended Merge Strategy
+### Merge Strategy
 
-The soccer CV pipeline v2.0 is stacked on two PRs:
+**Status**: PR #2 has been merged into PR #1's branch, and PR #1 has been merged into `main` (commits 9c1d144 and 5a5b8d0).
 
-- **PR #1** (`cursor/soccer-cv-pipeline-236d`): Base v1.2.0 features
-- **PR #2** (`cursor/cv-pipeline-v2-commercial-quality-023d`): v2.0 enhancements (base: PR #1)
-
-**Recommended merge order** (avoids retargeting and squash conflicts):
-
-1. **Merge PR #2 into PR #1's branch** on GitHub first (PR #2 base is already PR #1)
-2. **Merge PR #1 into `main`** with a merge commit (preserves both PR histories)
-3. Then `git checkout main && git pull origin main`
-
-**Alternative** (test combined stack before merging):
-```bash
-# Merge PR #2 into PR #1's branch locally
-git checkout cursor/soccer-cv-pipeline-236d
-git merge cursor/cv-pipeline-v2-commercial-quality-023d
-# Test, then merge cursor/soccer-cv-pipeline-236d into main
-```
+The target tracking PR (`cursor/target-tracking-replay-97fa`) is rebased on `main` and merges directly into `main`.
 
 ---
 
