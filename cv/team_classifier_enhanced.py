@@ -231,13 +231,13 @@ class TeamClassifierEnhanced:
     
     def detect_goalkeepers(
         self,
-        track_positions: Dict[int, List[Tuple[float, float]]],
+        track_positions: Dict[int, List[Tuple[float, float, int]]],
         pitch_length_m: float = 105.0
     ):
         """Detect goalkeepers based on position (stay near goal).
         
         Args:
-            track_positions: Dict mapping track_id to list of (pitch_x, pitch_y)
+            track_positions: Dict mapping track_id to list of (pitch_x, pitch_y, frame_idx)
             pitch_length_m: Pitch length in meters
         """
         if not self.fitted:
@@ -250,8 +250,8 @@ class TeamClassifierEnhanced:
             if track_id not in self.track_teams or self.track_teams[track_id] is None:
                 continue  # Skip referees
             
-            # Compute average x position
-            avg_x = np.mean([x for x, y in positions])
+            # Compute average x position (extract x from (x, y, frame) tuples)
+            avg_x = np.mean([x for x, y, frame in positions])
             
             # Check if near goal (< 20m from either end)
             near_left_goal = avg_x < 20.0
@@ -259,7 +259,7 @@ class TeamClassifierEnhanced:
             
             if near_left_goal or near_right_goal:
                 # Check if position is consistent (stays in that zone)
-                x_positions = [x for x, y in positions]
+                x_positions = [x for x, y, frame in positions]
                 x_std = np.std(x_positions)
                 
                 # If standard deviation is low, likely a goalkeeper
