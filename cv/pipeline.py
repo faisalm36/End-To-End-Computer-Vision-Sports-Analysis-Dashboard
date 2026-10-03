@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from tqdm import tqdm
 from datetime import datetime
 import time
@@ -193,6 +193,8 @@ class SoccerAnalyticsPipeline:
             'ball_model_path': self.ball_model_path,
             'device': self.device,
             'tracker': self.tracker,  # v2.0
+            'detection_imgsz': self.config.DEFAULT_IMGSZ,  # Inference resolution for player detection
+            'ball_detection_imgsz': self.config.BALL_IMGSZ,  # Inference resolution for ball detection
             'ball_tracking_method': 'tiled' if self.config.BALL_USE_TILING else 'simple',  # v2.0
             'tracklet_stitching_enabled': self.config.USE_TRACKLET_STITCHING,  # v2.0
             'calibration': self.config.calibration_source or 'none',
@@ -262,9 +264,12 @@ class SoccerAnalyticsPipeline:
         pbar = tqdm(total=total_frames, desc="Processing frames")
         last_progress_pct = -1  # For backend progress tracking
         
-        # Track positions for tracklet data
-        tracklet_positions: Dict[int, List[Tuple[float, float]]] = {}
+        # Track positions for tracklet data (with frame indices for accurate timestamps)
+        tracklet_positions: Dict[int, List[Tuple[float, float, int]]] = {}  # track_id -> [(x, y, frame), ...]
         tracklet_frame_ranges: Dict[int, Tuple[int, int]] = {}
+        
+        # Frame processing timing
+        frame_times = []
         
         while True:
             ret, frame = cap.read()
@@ -277,6 +282,7 @@ class SoccerAnalyticsPipeline:
                 print(f"Processing frames: {current_progress_pct}%", flush=True)
                 last_progress_pct = current_progress_pct
             
+            frame_start_time = time.time()
             timestamp = frame_idx / fps
             
             # v2.0: Detect and track with enhanced tracker
@@ -327,15 +333,30 @@ class SoccerAnalyticsPipeline:
                             is_detected=True  # v2.0
                         )
                         
-                        # Track for tracklet stitching
+                        # Track for tracklet stitching (pitch coordinates)
                         if track_id not in tracklet_positions:
                             tracklet_positions[track_id] = []
                             tracklet_frame_ranges[track_id] = (frame_idx, frame_idx)
-                        tracklet_positions[track_id].append((pitch_coords[0], pitch_coords[1]))
+                        tracklet_positions[track_id].append((pitch_coords[0], pitch_coords[1], frame_idx))
                         tracklet_frame_ranges[track_id] = (
                             tracklet_frame_ranges[track_id][0],
                             frame_idx
                         )
+                
+                # Fallback: use normalized image-space positions for stitching when no calibration
+                if not pitch_coords:
+                    # Compute foot position in normalized image space (0-1 range)
+                    foot_x = (bbox[0] + bbox[2]) / 2.0 / width
+                    foot_y = bbox[3] / height  # Bottom of bbox
+                    
+                    if track_id not in tracklet_positions:
+                        tracklet_positions[track_id] = []
+                        tracklet_frame_ranges[track_id] = (frame_idx, frame_idx)
+                    tracklet_positions[track_id].append((foot_x, foot_y, frame_idx))
+                    tracklet_frame_ranges[track_id] = (
+                        tracklet_frame_ranges[track_id][0],
+                        frame_idx
+                    )
                 
                 # Store detection (team/role/player_uid will be filled later)
                 detection = {
@@ -401,6 +422,7 @@ class SoccerAnalyticsPipeline:
                 writer.write(annotated)
             
             frame_idx += 1
+            frame_times.append(time.time() - frame_start_time)
             pbar.update(1)
         
         pbar.close()
@@ -445,6 +467,7 @@ class SoccerAnalyticsPipeline:
                     detection['role'] = role if role != 'unknown' else 'player'
         
         # Finalize jersey numbers with weighted voting
+        jersey_numbers = {}
         if self.ocr:
             print("Finalizing jersey numbers with confidence-weighted voting...")
             jersey_numbers = self.ocr.get_all_jersey_numbers()
@@ -470,10 +493,11 @@ class SoccerAnalyticsPipeline:
                 if self.team_classifier and track_id in self.team_classifier.track_median_colors:
                     appearance = self.team_classifier.track_median_colors[track_id]
                 
-                # Get positions with timestamps
+                # Get positions with actual frame-based timestamps
+                # Bug fix: positions now include frame indices for accurate timestamps
                 positions_with_time = [
-                    (x, y, i / fps) 
-                    for i, (x, y) in enumerate(tracklet_positions[track_id])
+                    (x, y, frame / fps) 
+                    for x, y, frame in tracklet_positions[track_id]
                 ]
                 
                 self.tracklet_stitcher.add_tracklet(
@@ -488,12 +512,29 @@ class SoccerAnalyticsPipeline:
             # Stitch
             track_to_player = self.tracklet_stitcher.stitch_tracklets()
             
+            # Sanity check: warn if stitching collapsed too much
+            num_uids = len(set(track_to_player.values()))
+            num_tracks = len(track_to_player)
+            if num_uids < num_tracks * 0.3:  # UIDs < 30% of tracks
+                warning = f"Stitching: {num_uids} player UIDs from {num_tracks} tracks (potential over-stitching)"
+                print(f"Warning: {warning}")
+                self.warnings.append(warning)
+            
             # Update detections with player_uid
             for detection in self.detections:
                 track_id = detection['track_id']
                 if track_id > 0:  # Not ball
                     player_uid = track_to_player.get(track_id)
                     detection['player_uid'] = player_uid
+            
+            # Check coverage: how many player detections got a player_uid?
+            player_detections = [d for d in self.detections if d['track_id'] > 0]
+            detections_with_uid = [d for d in player_detections if d['player_uid'] is not None]
+            coverage_pct = 100.0 * len(detections_with_uid) / len(player_detections) if player_detections else 0.0
+            if coverage_pct < 50.0:
+                warning = f"Stitching: only {len(detections_with_uid)}/{len(player_detections)} player detections ({coverage_pct:.1f}%) assigned a player_uid"
+                print(f"Warning: {warning}")
+                self.warnings.append(warning)
         
         # Calculate player statistics (per player_uid if stitching, otherwise per track_id)
         print("Calculating player statistics...")
@@ -506,7 +547,7 @@ class SoccerAnalyticsPipeline:
         # Group stats by player_uid if stitching enabled
         if self.tracklet_stitcher:
             print("Aggregating stats per player_uid...")
-            player_uid_stats = self._aggregate_stats_by_player_uid(player_stats, jersey_numbers)
+            player_uid_stats = self._aggregate_stats_by_player_uid(player_stats, jersey_numbers, tracklet_positions)
             filtered_stats = player_uid_stats
         else:
             # No stitching: use track_id as player_uid
@@ -546,11 +587,22 @@ class SoccerAnalyticsPipeline:
         unique_tracks = len(set(d['track_id'] for d in self.detections if d['track_id'] > 0))
         player_count = len(filtered_stats)
         
+        # Add ball gating statistics
+        ball_gated_frames = self.ball_tracker.ball_gated_count if hasattr(self.ball_tracker, 'ball_gated_count') else 0
+        if ball_gated_frames > 0:
+            print(f"Ball speed gating: rejected {ball_gated_frames} detections")
+        
+        # Frame timing statistics
+        avg_frame_time = np.mean(frame_times) if frame_times else 0.0
+        print(f"Average per-frame processing time: {avg_frame_time*1000:.1f} ms")
+        
         self.metadata.update({
             'end_timestamp': end_timestamp,
             'runtime_s': round(runtime_s, 2),
+            'avg_frame_time_ms': round(avg_frame_time * 1000, 2),
             'unique_tracks': unique_tracks,
             'player_count': player_count,
+            'ball_gated_frames': ball_gated_frames,
             'warnings': self.warnings
         })
         
@@ -565,12 +617,13 @@ class SoccerAnalyticsPipeline:
     def _aggregate_stats_by_player_uid(
         self,
         track_stats: List[Dict],
-        jersey_numbers: Dict[int, Optional[int]]
+        jersey_numbers: Dict[int, Optional[int]],
+        tracklet_positions: Dict[int, List[Tuple[float, float, int]]]
     ) -> List[Dict]:
         """Aggregate per-track stats into per-player_uid stats.
         
         Args:
-            track_stats: List of stats per track_id
+            track_stats: List of stats per track_id (may be empty for tracks without pitch coords)
             jersey_numbers: Dict of track_id -> jersey_number
         
         Returns:
@@ -578,10 +631,18 @@ class SoccerAnalyticsPipeline:
         """
         from collections import defaultdict
         
+        # Get all track IDs that got a player_uid from stitcher
+        all_track_uids = {}
+        for track_id in tracklet_positions.keys():
+            player_uid = self.tracklet_stitcher.get_player_uid(track_id)
+            if player_uid is not None:
+                all_track_uids[track_id] = player_uid
+        
         # Group tracks by player_uid
         uid_to_tracks: Dict[int, List[int]] = defaultdict(list)
         uid_to_stats: Dict[int, List[Dict]] = defaultdict(list)
         
+        # First, process tracks that have stats
         for stat in track_stats:
             track_id = stat['track_id']
             player_uid = self.tracklet_stitcher.get_player_uid(track_id)
@@ -590,36 +651,68 @@ class SoccerAnalyticsPipeline:
                 uid_to_tracks[player_uid].append(track_id)
                 uid_to_stats[player_uid].append(stat)
         
+        # Add tracks that got stitched but have no stats (no pitch coords)
+        for track_id, player_uid in all_track_uids.items():
+            if track_id not in [tid for tids in uid_to_tracks.values() for tid in tids]:
+                uid_to_tracks[player_uid].append(track_id)
+                # No stats to add - will create minimal row below
+        
         # Aggregate stats
         aggregated = []
         
         for player_uid, track_ids in uid_to_tracks.items():
             stats_list = uid_to_stats[player_uid]
             
-            # Sum numeric fields
-            total_distance = sum(s.get('distance_km', 0) or 0 for s in stats_list)
-            total_visible_mins = sum(s.get('visible_minutes', 0) or 0 for s in stats_list)
-            total_hsr_dist = sum(s.get('high_speed_distance_km', 0) or 0 for s in stats_list)
-            total_sprint_dist = sum(s.get('sprint_distance_km', 0) or 0 for s in stats_list)
-            total_hsr_count = sum(s.get('hsr_count', 0) or 0 for s in stats_list)
-            total_sprint_count = sum(s.get('sprint_count', 0) or 0 for s in stats_list)
-            total_detected_frames = sum(s.get('detected_frames', 0) or 0 for s in stats_list)
-            total_frames = sum(s.get('total_frames', 0) or 0 for s in stats_list)
+            # Count detections for this player_uid
+            uid_detections = [d for d in self.detections 
+                            if d['track_id'] in track_ids and d['track_id'] > 0]
+            detected_frames = len(uid_detections)
             
-            # Max/average fields
-            top_speed_mph = max((s.get('top_speed_mph', 0) or 0 for s in stats_list), default=0)
-            
-            # Team and role (from first track, should all agree after stitching)
-            team = stats_list[0].get('team')
-            role = stats_list[0].get('role', 'player')
-            
-            # Jersey number (majority across tracks)
-            jersey_votes = [jersey_numbers.get(tid) for tid in track_ids if jersey_numbers.get(tid) is not None]
-            jersey_number = max(set(jersey_votes), key=jersey_votes.count) if jersey_votes else None
+            # Get team and role from detections
+            team = None
+            role = 'player'
+            if uid_detections:
+                team = uid_detections[0].get('team')
+                role = uid_detections[0].get('role', 'player')
             
             # Exclude referees
             if role == 'referee':
                 continue
+            
+            if stats_list:
+                # Have physical stats - aggregate them
+                total_distance = sum(s.get('distance_km', 0) or 0 for s in stats_list)
+                total_visible_mins = sum(s.get('visible_minutes', 0) or 0 for s in stats_list)
+                total_hsr_dist = sum(s.get('high_speed_distance_km', 0) or 0 for s in stats_list)
+                total_sprint_dist = sum(s.get('sprint_distance_km', 0) or 0 for s in stats_list)
+                total_hsr_count = sum(s.get('hsr_count', 0) or 0 for s in stats_list)
+                total_sprint_count = sum(s.get('sprint_count', 0) or 0 for s in stats_list)
+                total_detected_frames_from_stats = sum(s.get('detected_frames', 0) or 0 for s in stats_list)
+                total_frames_from_stats = sum(s.get('total_frames', 0) or 0 for s in stats_list)
+                
+                # Max/average fields
+                top_speed_mph = max((s.get('top_speed_mph', 0) or 0 for s in stats_list), default=0)
+                
+                # Team and role (from first track with stats, should agree after stitching)
+                if stats_list[0].get('team') is not None:
+                    team = stats_list[0].get('team')
+                if stats_list[0].get('role', 'player') != 'player':
+                    role = stats_list[0].get('role', 'player')
+            else:
+                # No physical stats (no calibration) - create minimal row
+                total_distance = None
+                total_visible_mins = 0.0
+                total_hsr_dist = None
+                total_sprint_dist = None
+                total_hsr_count = None
+                total_sprint_count = None
+                total_detected_frames_from_stats = 0
+                total_frames_from_stats = 0
+                top_speed_mph = None
+            
+            # Jersey number (majority across tracks)
+            jersey_votes = [jersey_numbers.get(tid) for tid in track_ids if jersey_numbers.get(tid) is not None]
+            jersey_number = max(set(jersey_votes), key=jersey_votes.count) if jersey_votes else None
             
             aggregated_stat = {
                 'player_uid': player_uid,  # v2.0
@@ -628,19 +721,18 @@ class SoccerAnalyticsPipeline:
                 'jersey_number': jersey_number,
                 'team': team,
                 'role': role,
-                'top_speed_mph': round(top_speed_mph, 2),
-                'top_speed_kmh': round(top_speed_mph * 1.60934, 2),
-                'distance_km': round(total_distance, 2),
-                'visible_minutes': round(total_visible_mins, 2),
-                'high_speed_distance_km': round(total_hsr_dist, 2),
-                'sprint_distance_km': round(total_sprint_dist, 2),
+                'top_speed_mph': round(top_speed_mph, 2) if top_speed_mph else None,
+                'top_speed_kmh': round(top_speed_mph * 1.60934, 2) if top_speed_mph else None,
+                'distance_km': round(total_distance, 2) if total_distance else None,
+                'visible_minutes': round(total_visible_mins, 2) if stats_list else round(detected_frames / self.metadata['fps'] / 60.0, 2),
+                'high_speed_distance_km': round(total_hsr_dist, 2) if total_hsr_dist else None,
+                'sprint_distance_km': round(total_sprint_dist, 2) if total_sprint_dist else None,
                 'hsr_count': total_hsr_count,
                 'sprint_count': total_sprint_count,
-                'hi_efforts_count': total_hsr_count + total_sprint_count,
-                'detected_frames': total_detected_frames,  # v2.0
-                'total_frames': total_frames,  # v2.0
-                # Other fields would need averaging or re-computation
-                # For simplicity, including main metrics
+                'hi_efforts_count': (total_hsr_count or 0) + (total_sprint_count or 0) if total_hsr_count is not None else None,
+                'detected_frames': detected_frames,  # v2.0: from actual detections
+                'total_frames': max(detected_frames, total_frames_from_stats),  # v2.0
+                'distance_valid': total_distance is not None,  # Flag for uncalibrated data
             }
             
             aggregated.append(aggregated_stat)
