@@ -161,7 +161,7 @@ def detect_frame(
     goalkeeper_track_ids = set()
     if team_classifier and team_classifier.fitted:
         # Simple heuristic: check if any track is marked as goalkeeper
-        for track_id in team_classifier.track_votes.keys():
+        for track_id in team_classifier.track_teams.keys():
             role = team_classifier.get_role(track_id)
             if role == 'goalkeeper':
                 goalkeeper_track_ids.add(track_id)

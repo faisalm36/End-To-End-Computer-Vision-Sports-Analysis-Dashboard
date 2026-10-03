@@ -629,7 +629,7 @@ class SoccerAnalyticsPipeline:
                         player_uid_map[track_id] = player_uid
             
             if self.team_classifier and self.team_classifier.fitted:
-                for track_id in self.team_classifier.track_votes.keys():
+                for track_id in self.team_classifier.track_teams.keys():
                     team = self.team_classifier.get_team(track_id)
                     if team is not None:
                         team_map[track_id] = team
@@ -919,7 +919,7 @@ class SoccerAnalyticsPipeline:
         appearance_map = {}
         
         if self.team_classifier and self.team_classifier.fitted:
-            for track_id in self.team_classifier.track_votes.keys():
+            for track_id in self.team_classifier.track_teams.keys():
                 team = self.team_classifier.get_team(track_id)
                 if team is not None:
                     team_map[track_id] = team
