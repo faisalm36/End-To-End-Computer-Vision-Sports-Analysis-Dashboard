@@ -254,10 +254,9 @@ def _cv_root() -> Path:
 def track_mode(module: str) -> str:
     """'real' | 'stub' for cv.<module> (detect_frame or track_player); both modules decide together in auto."""
     mode = (settings.TRACK_PIPELINE_MODE or "auto").strip().lower()
-    if mode in ("real", "stub"):
-        return mode
-    cv = _cv_root() / "cv"
-    return "real" if all((cv / f"{m}.py").is_file() for m in TRACK_MODULES) else "stub"
+    # Only an explicit TRACK_PIPELINE_MODE=stub gives fake demo tracks. auto/real always run the real CV, and a
+    # missing cv.detect_frame / cv.track_player is a clear cv_unavailable error, never a silent fake track.
+    return "stub" if mode == "stub" else "real"
 
 
 TRACK_MODULES = ("detect_frame", "track_player")
@@ -323,7 +322,7 @@ def _require_module(module: str) -> None:
     path = _cv_root() / "cv" / f"{module}.py"
     if not path.is_file():
         raise TrackError("cv_unavailable", f"CV module not found at {path} (the CV checkout has no cv.{module} yet). "
-                                           "Set TRACK_PIPELINE_MODE=auto or stub for demo data.")
+                                           "Merge the CV tracking modules, or set TRACK_PIPELINE_MODE=stub for demo data (tests only).")
 
 
 def _log_tail(path: Path, lines: int = 15) -> str:

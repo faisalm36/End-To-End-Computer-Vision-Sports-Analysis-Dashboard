@@ -181,7 +181,9 @@ export default function Replay({ track, data, sourceUrl, annotatedUrl, player = 
   const issues = useMemo(() => buildIssues(frames, fps, { lostSegments: serverSummary?.lost_segments }), [frames, fps, serverSummary]);
   const stats = useMemo(() => summarize(frames, fps, serverSummary), [frames, fps, serverSummary]);
   const view = frameView(frames, frame);
-  const labelText = `${jersey != null ? `#${jersey}` : 'Player'}${view.conf != null ? ` · ${Math.round(view.conf * 100)}%` : ''}`;
+  const teamTag = track.target.team ? ` · Team ${track.target.team}` : '';
+  const idText = jersey != null ? `#${jersey}${player?.name ? ` ${player.name}` : ''}` : `Unknown player${teamTag}`;
+  const labelText = `${idText}${view.conf != null ? ` · ${Math.round(view.conf * 100)}%` : ''}`;
 
   // ---- media control -------------------------------------------------------
   const seek = useCallback(
@@ -495,10 +497,10 @@ export default function Replay({ track, data, sourceUrl, annotatedUrl, player = 
         <section className={`${card} p-4`}>
           <h2 className={label}>Tracked player</h2>
           <div className="mt-3 flex items-start gap-3">
-            <CropThumb src={thumb?.src} bbox={thumb?.bbox} label={jersey != null ? `#${jersey}` : '?'} className="h-16 w-12" />
+            <CropThumb src={thumb?.src} bbox={thumb?.bbox} label={jersey != null ? `#${jersey}` : 'Unknown player'} className="h-16 w-12" />
             <div className="min-w-0">
               <p className="text-title text-fg">
-                <span className="font-mono">{jersey != null ? `#${jersey}` : 'Player ?'}</span>
+                <span className="font-mono">{jersey != null ? `#${jersey}` : 'Unknown player'}</span>
                 {player?.name ? <span className="ml-2 text-body font-normal text-fg-secondary">{player.name}</span> : null}
               </p>
               {track.target.team && <p className="text-caption text-fg-muted">Team {track.target.team}</p>}

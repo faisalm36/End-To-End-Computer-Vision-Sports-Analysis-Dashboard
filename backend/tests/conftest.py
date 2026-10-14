@@ -27,6 +27,7 @@ os.environ.update({
     "THUMBNAILS_ENABLED": "true",
     "CV_OUTPUT_DIR": str(TMP / "cv_outputs"),
     "CV_PIPELINE_MODE": "auto",
+    "TRACK_PIPELINE_MODE": "stub",
     "CV_PIPELINE_STUB": "true",
     "CV_PIPELINE_PATH": str(TMP / "no-such-cv" / "run_pipeline.py"),
     "CV_PYTHON": "",

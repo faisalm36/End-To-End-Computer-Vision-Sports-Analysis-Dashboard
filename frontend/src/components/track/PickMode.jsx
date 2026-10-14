@@ -6,7 +6,8 @@ import { Spinner } from '../ui';
 import { useContentRect } from './hooks';
 import { CropThumb } from './parts';
 
-const nameOf = (p) => (p.jersey_number != null ? `#${p.jersey_number}` : 'Player ?');
+// No confident shirt number -> 'Unknown player' (plus team if known), never a guessed number.
+const nameOf = (p) => (p.jersey_number != null ? `#${p.jersey_number}` : `Unknown player${p.team ? ` (Team ${p.team})` : ''}`);
 const classNote = (p) => (p.cls === 'referee' ? 'Referee' : p.cls === 'goalkeeper' ? 'Goalkeeper' : p.team ? `Team ${p.team}` : null);
 
 // Pick mode (UI/UX spec §1): scrub to a frame, see that frame's detections as boxes,

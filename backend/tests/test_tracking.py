@@ -603,31 +603,24 @@ def test_stage_names(client, coach, video, monkeypatch):
     client.delete(f"/api/tracks/{tr['track_id']}", headers=coach)
 
 
-def test_track_mode_is_independent_of_cv_pipeline_mode(client, coach, video, tmp_root, monkeypatch):
-    """TRACK_PIPELINE_MODE=auto: stub unless BOTH cv/detect_frame.py and cv/track_player.py exist, whatever
-    CV_PIPELINE_MODE / CV_PIPELINE_STUB say (the Mac runs CV_PIPELINE_MODE=real without the tracking modules)."""
+def test_track_mode_never_silently_stubs(client, coach, video, tmp_root, monkeypatch):
+    """auto/real never fall back to fake tracks: missing CV modules -> cv_unavailable. Only explicit stub fakes."""
     root = tmp_root / "cv-main-without-tracking"
     (root / "cv").mkdir(parents=True, exist_ok=True)
     (root / "cv" / "run_pipeline.py").write_text("")
     monkeypatch.setattr(settings, "CV_PIPELINE_PATH", root / "cv" / "run_pipeline.py")
     monkeypatch.setattr(settings, "CV_PIPELINE_MODE", "real")
-    monkeypatch.setattr(settings, "CV_PIPELINE_STUB", False)
+    monkeypatch.setattr(settings, "CV_PIPELINE_STUB", True)
+    for m in ("auto", "real", "", "AUTO"):
+        monkeypatch.setattr(settings, "TRACK_PIPELINE_MODE", m)
+        assert trk.track_mode("track_player") == "real" and trk.track_mode("detect_frame") == "real"
     monkeypatch.setattr(settings, "TRACK_PIPELINE_MODE", "auto")
-    assert trk.track_mode("track_player") == "stub" and trk.track_mode("detect_frame") == "stub"
-    (root / "cv" / "track_player.py").write_text("")          # only one of the two -> still stub
-    assert trk.track_mode("track_player") == "stub" and trk.track_mode("detect_frame") == "stub"
-    (root / "cv" / "detect_frame.py").write_text("")
-    assert trk.track_mode("track_player") == "real" and trk.track_mode("detect_frame") == "real"
-    (root / "cv" / "detect_frame.py").unlink()
+    r = client.get(f"/api/videos/{video['id']}/detections?t=2.5", headers=coach)
+    assert r.status_code == 503
+    monkeypatch.setattr(settings, "TRACK_PIPELINE_MODE", "stub")
+    assert trk.track_mode("track_player") == "stub"
     r = client.get(f"/api/videos/{video['id']}/detections?t=2.5", headers=coach)
     assert r.status_code == 200 and r.json()["source"] == "stub"
-    tr = track_bbox(client, coach, video["id"])
-    done = get_track(client, coach, tr["track_id"])
-    assert done["status"] == "done" and done["source"] == "stub"
-    client.delete(f"/api/tracks/{tr['track_id']}", headers=coach)
-    monkeypatch.setattr(settings, "TRACK_PIPELINE_MODE", "stub")
-    (root / "cv" / "detect_frame.py").write_text("")
-    assert trk.track_mode("track_player") == "stub"           # explicit stub wins
 
 
 # ------------------------------------------------------------------ real mode (fake CV package)

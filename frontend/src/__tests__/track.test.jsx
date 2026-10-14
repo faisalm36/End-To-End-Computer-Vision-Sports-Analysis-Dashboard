@@ -95,7 +95,7 @@ describe('Track a player: pick', () => {
   it('shows the frame’s detections as boxes; click selects, confirm starts a track with frame + bbox', async () => {
     const { api, user, container } = setup({ routes: { 'POST /api/videos/1/tracks': [202, track()], 'GET /api/tracks/100': track() } });
     await waitFor(() => expect(container.querySelectorAll('[data-det]')).toHaveLength(6));
-    expect(screen.getAllByText('Player ?').length).toBeGreaterThan(0); // no jersey number
+    expect(screen.getAllByText(/Unknown player/).length).toBeGreaterThan(0); // no jersey number
     const box = container.querySelector('[data-det^="24-"]');
     expect(box).toHaveAccessibleName(/^#10, Team A, detection \d+%/);
     await user.click(box);
