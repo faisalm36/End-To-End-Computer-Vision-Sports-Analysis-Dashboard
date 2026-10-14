@@ -1,0 +1,19 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0.25
+pymysql>=1.1.0
+cryptography>=42.0
+python-dotenv>=1.0
+pydantic[email]>=2.6
+pydantic-settings>=2.2
+python-multipart>=0.0.9
+bcrypt>=4.1
+PyJWT>=2.8
+# Injury-risk model (v0.7.0). Pinned EXACTLY: ml/risk_model.joblib is a pickle and must be loaded by the same
+# scikit-learn / numpy / joblib it was trained with (retrain with `python -m ml.train_risk_model` after upgrading).
+scikit-learn==1.9.1
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.18.1
+joblib==1.6.0
+threadpoolctl==3.7.0

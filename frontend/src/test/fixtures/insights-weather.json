@@ -1,0 +1,456 @@
+{
+ "key": "Weather",
+ "filters": {
+  "player_id": null,
+  "team_id": null
+ },
+ "scope": "our_team",
+ "definitions": {
+  "avg_workload": "avg_workload = mean workload band per player appearance from the pipeline's workload-based injury-risk (Low=1, Medium=2, High=3; range 1-3). Workload indicator, not medical advice.",
+  "unit_of_analysis": "match; per-match value = mean over players in scope",
+  "next_match": "your next match chronologically after each tagged match (deduplicated)",
+  "low_sample": "true when fewer than 3 matches have data"
+ },
+ "baseline": {
+  "matches": 7,
+  "matches_with_data": 6,
+  "metrics": {
+   "distance_km": 3.502,
+   "top_speed_mph": 19.7,
+   "sprint_count": 10.8,
+   "hsr_distance_km": 0.407,
+   "sprint_distance_km": 0.133,
+   "distance_per_min": 66.4,
+   "workload": 1.65
+  },
+  "metric_n": {
+   "distance_km": 6,
+   "top_speed_mph": 6,
+   "sprint_count": 6,
+   "hsr_distance_km": 6,
+   "sprint_distance_km": 6,
+   "distance_per_min": 6,
+   "workload": 6
+  },
+  "injury_risk": {
+   "Low": 12,
+   "Medium": 9,
+   "High": 3
+  },
+  "wdl": {
+   "w": 4,
+   "d": 1,
+   "l": 1,
+   "unknown": 1
+  },
+  "match_ids": [
+   3,
+   4,
+   5,
+   1,
+   6,
+   2,
+   7
+  ],
+  "avg_distance_km": 3.502,
+  "avg_top_speed_mph": 19.7,
+  "avg_sprints": 10.8,
+  "avg_hsr_distance_km": 0.407,
+  "avg_workload": 1.65,
+  "workload": {
+   "low": 12,
+   "medium": 9,
+   "high": 3
+  }
+ },
+ "groups": [
+  {
+   "value": "Rainy",
+   "matches": 3,
+   "matches_with_data": 3,
+   "low_sample": false,
+   "avg_distance_km": 3.003,
+   "avg_top_speed_mph": 19.1,
+   "avg_sprints": 10.6,
+   "avg_hsr_distance_km": 0.354,
+   "avg_sprint_distance_km": 0.121,
+   "avg_distance_per_min": 57.5,
+   "avg_workload": 1.917,
+   "metrics": {
+    "distance_km": 3.003,
+    "top_speed_mph": 19.1,
+    "sprint_count": 10.6,
+    "hsr_distance_km": 0.354,
+    "sprint_distance_km": 0.121,
+    "distance_per_min": 57.5,
+    "workload": 1.917
+   },
+   "metric_n": {
+    "distance_km": 3,
+    "top_speed_mph": 3,
+    "sprint_count": 3,
+    "hsr_distance_km": 3,
+    "sprint_distance_km": 3,
+    "distance_per_min": 3,
+    "workload": 3
+   },
+   "delta_vs_baseline": {
+    "distance_km": -0.499,
+    "top_speed_mph": -0.6,
+    "sprint_count": -0.2,
+    "hsr_distance_km": -0.053,
+    "sprint_distance_km": -0.012,
+    "distance_per_min": -8.9,
+    "workload": 0.267
+   },
+   "change_pct_vs_baseline": {
+    "distance_km": -14.2,
+    "top_speed_mph": -3.0,
+    "sprint_count": -1.9,
+    "hsr_distance_km": -13.0,
+    "sprint_distance_km": -9.0,
+    "distance_per_min": -13.4,
+    "workload": 16.2
+   },
+   "injury_risk": {
+    "Low": 4,
+    "Medium": 4,
+    "High": 3
+   },
+   "workload": {
+    "low": 4,
+    "medium": 4,
+    "high": 3
+   },
+   "wdl": {
+    "w": 2,
+    "d": 0,
+    "l": 1,
+    "unknown": 0
+   },
+   "match_ids": [
+    3,
+    5,
+    2
+   ],
+   "next_match": {
+    "matches": 3,
+    "matches_with_data": 2,
+    "low_sample": true,
+    "metrics": {
+     "distance_km": 3.877,
+     "top_speed_mph": 20.1,
+     "sprint_count": 11.2,
+     "hsr_distance_km": 0.461,
+     "sprint_distance_km": 0.139,
+     "distance_per_min": 73.1,
+     "workload": 1.45
+    },
+    "metric_n": {
+     "distance_km": 2,
+     "top_speed_mph": 2,
+     "sprint_count": 2,
+     "hsr_distance_km": 2,
+     "sprint_distance_km": 2,
+     "distance_per_min": 2,
+     "workload": 2
+    },
+    "injury_risk": {
+     "Low": 5,
+     "Medium": 4,
+     "High": 0
+    },
+    "wdl": {
+     "w": 1,
+     "d": 1,
+     "l": 0,
+     "unknown": 1
+    },
+    "match_ids": [
+     4,
+     1,
+     7
+    ],
+    "delta": {
+     "distance_km": 0.375,
+     "top_speed_mph": 0.4,
+     "sprint_count": 0.4,
+     "hsr_distance_km": 0.054,
+     "sprint_distance_km": 0.006,
+     "distance_per_min": 6.7,
+     "workload": -0.2
+    },
+    "change_pct": {
+     "distance_km": 10.7,
+     "top_speed_mph": 2.0,
+     "sprint_count": 3.7,
+     "hsr_distance_km": 13.3,
+     "sprint_distance_km": 4.5,
+     "distance_per_min": 10.1,
+     "workload": -12.1
+    },
+    "pairs": 2
+   }
+  },
+  {
+   "value": "Sunny",
+   "matches": 3,
+   "matches_with_data": 3,
+   "low_sample": false,
+   "avg_distance_km": 4.002,
+   "avg_top_speed_mph": 20.3,
+   "avg_sprints": 11.0,
+   "avg_hsr_distance_km": 0.46,
+   "avg_sprint_distance_km": 0.146,
+   "avg_distance_per_min": 75.2,
+   "avg_workload": 1.383,
+   "metrics": {
+    "distance_km": 4.002,
+    "top_speed_mph": 20.3,
+    "sprint_count": 11.0,
+    "hsr_distance_km": 0.46,
+    "sprint_distance_km": 0.146,
+    "distance_per_min": 75.2,
+    "workload": 1.383
+   },
+   "metric_n": {
+    "distance_km": 3,
+    "top_speed_mph": 3,
+    "sprint_count": 3,
+    "hsr_distance_km": 3,
+    "sprint_distance_km": 3,
+    "distance_per_min": 3,
+    "workload": 3
+   },
+   "delta_vs_baseline": {
+    "distance_km": 0.5,
+    "top_speed_mph": 0.6,
+    "sprint_count": 0.2,
+    "hsr_distance_km": 0.053,
+    "sprint_distance_km": 0.013,
+    "distance_per_min": 8.8,
+    "workload": -0.267
+   },
+   "change_pct_vs_baseline": {
+    "distance_km": 14.3,
+    "top_speed_mph": 3.0,
+    "sprint_count": 1.9,
+    "hsr_distance_km": 13.0,
+    "sprint_distance_km": 9.8,
+    "distance_per_min": 13.3,
+    "workload": -16.2
+   },
+   "injury_risk": {
+    "Low": 8,
+    "Medium": 5,
+    "High": 0
+   },
+   "workload": {
+    "low": 8,
+    "medium": 5,
+    "high": 0
+   },
+   "wdl": {
+    "w": 2,
+    "d": 1,
+    "l": 0,
+    "unknown": 0
+   },
+   "match_ids": [
+    4,
+    1,
+    6
+   ],
+   "next_match": {
+    "matches": 3,
+    "matches_with_data": 3,
+    "low_sample": false,
+    "metrics": {
+     "distance_km": 3.336,
+     "top_speed_mph": 19.6,
+     "sprint_count": 11.1,
+     "hsr_distance_km": 0.387,
+     "sprint_distance_km": 0.132,
+     "distance_per_min": 62.9,
+     "workload": 1.833
+    },
+    "metric_n": {
+     "distance_km": 3,
+     "top_speed_mph": 3,
+     "sprint_count": 3,
+     "hsr_distance_km": 3,
+     "sprint_distance_km": 3,
+     "distance_per_min": 3,
+     "workload": 3
+    },
+    "injury_risk": {
+     "Low": 5,
+     "Medium": 3,
+     "High": 3
+    },
+    "wdl": {
+     "w": 2,
+     "d": 0,
+     "l": 1,
+     "unknown": 0
+    },
+    "match_ids": [
+     5,
+     6,
+     2
+    ],
+    "delta": {
+     "distance_km": -0.166,
+     "top_speed_mph": -0.1,
+     "sprint_count": 0.3,
+     "hsr_distance_km": -0.02,
+     "sprint_distance_km": -0.001,
+     "distance_per_min": -3.5,
+     "workload": 0.183
+    },
+    "change_pct": {
+     "distance_km": -4.7,
+     "top_speed_mph": -0.5,
+     "sprint_count": 2.8,
+     "hsr_distance_km": -4.9,
+     "sprint_distance_km": -0.8,
+     "distance_per_min": -5.3,
+     "workload": 11.1
+    },
+    "pairs": 3
+   }
+  }
+ ],
+ "next_match_effect": [
+  {
+   "value": "Rainy",
+   "metric": "distance",
+   "metric_key": "distance_km",
+   "change_pct": 10.7,
+   "delta": 0.375,
+   "next": 3.877,
+   "next_avg": 3.877,
+   "baseline": 3.502,
+   "n": 2,
+   "pairs": 2,
+   "low_sample": true
+  },
+  {
+   "value": "Rainy",
+   "metric": "speed",
+   "metric_key": "top_speed_mph",
+   "change_pct": 2.0,
+   "delta": 0.4,
+   "next": 20.1,
+   "next_avg": 20.1,
+   "baseline": 19.7,
+   "n": 2,
+   "pairs": 2,
+   "low_sample": true
+  },
+  {
+   "value": "Rainy",
+   "metric": "sprints",
+   "metric_key": "sprint_count",
+   "change_pct": 3.7,
+   "delta": 0.4,
+   "next": 11.2,
+   "next_avg": 11.2,
+   "baseline": 10.8,
+   "n": 2,
+   "pairs": 2,
+   "low_sample": true
+  },
+  {
+   "value": "Rainy",
+   "metric": "hsr",
+   "metric_key": "hsr_distance_km",
+   "change_pct": 13.3,
+   "delta": 0.054,
+   "next": 0.461,
+   "next_avg": 0.461,
+   "baseline": 0.407,
+   "n": 2,
+   "pairs": 2,
+   "low_sample": true
+  },
+  {
+   "value": "Rainy",
+   "metric": "workload",
+   "metric_key": "workload",
+   "change_pct": -12.1,
+   "delta": -0.2,
+   "next": 1.45,
+   "next_avg": 1.45,
+   "baseline": 1.65,
+   "n": 2,
+   "pairs": 2,
+   "low_sample": true
+  },
+  {
+   "value": "Sunny",
+   "metric": "distance",
+   "metric_key": "distance_km",
+   "change_pct": -4.7,
+   "delta": -0.166,
+   "next": 3.336,
+   "next_avg": 3.336,
+   "baseline": 3.502,
+   "n": 3,
+   "pairs": 3,
+   "low_sample": false
+  },
+  {
+   "value": "Sunny",
+   "metric": "speed",
+   "metric_key": "top_speed_mph",
+   "change_pct": -0.5,
+   "delta": -0.1,
+   "next": 19.6,
+   "next_avg": 19.6,
+   "baseline": 19.7,
+   "n": 3,
+   "pairs": 3,
+   "low_sample": false
+  },
+  {
+   "value": "Sunny",
+   "metric": "sprints",
+   "metric_key": "sprint_count",
+   "change_pct": 2.8,
+   "delta": 0.3,
+   "next": 11.1,
+   "next_avg": 11.1,
+   "baseline": 10.8,
+   "n": 3,
+   "pairs": 3,
+   "low_sample": false
+  },
+  {
+   "value": "Sunny",
+   "metric": "hsr",
+   "metric_key": "hsr_distance_km",
+   "change_pct": -4.9,
+   "delta": -0.02,
+   "next": 0.387,
+   "next_avg": 0.387,
+   "baseline": 0.407,
+   "n": 3,
+   "pairs": 3,
+   "low_sample": false
+  },
+  {
+   "value": "Sunny",
+   "metric": "workload",
+   "metric_key": "workload",
+   "change_pct": 11.1,
+   "delta": 0.183,
+   "next": 1.833,
+   "next_avg": 1.833,
+   "baseline": 1.65,
+   "n": 3,
+   "pairs": 3,
+   "low_sample": false
+  }
+ ]
+}

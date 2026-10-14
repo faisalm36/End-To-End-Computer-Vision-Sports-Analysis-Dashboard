@@ -1,0 +1,114 @@
+/*
+ * Soccer Analytics Design System — v1 (dark)
+ * Tailwind CSS v4 theme tokens. Usage: in src/index.css, import
+ * "tailwindcss" first, then this file (see DESIGN_SYSTEM.md, "Install").
+ * All colors are solid hex so every text/surface pair is contrast-verified
+ * (see contrast.py). Opacity modifiers (e.g. bg-accent/10) still work.
+ */
+@theme {
+  /* ---------- Fonts ---------- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---------- Surfaces (elevation by lightness, not shadow) ---------- */
+  --color-surface-base: #020617;      /* app background   (slate-950) */
+  --color-surface-sunken: #0a1122;    /* tracks, inputs, table header */
+  --color-surface-raised: #0f172a;    /* cards            (slate-900) */
+  --color-surface-overlay: #1e293b;   /* hover row, popover, sheet (slate-800) */
+  --color-surface-selected: #1d292f;  /* selected row = accent 8% on raised */
+
+  /* ---------- Lines ---------- */
+  --color-line: #1e293b;              /* default border   (slate-800) */
+  --color-line-strong: #334155;       /* dividers, secondary-button ring (slate-700) */
+  --color-line-input: #64748b;        /* form-field borders: must hit 3:1 (slate-500) */
+
+  /* ---------- Foreground text ---------- */
+  --color-fg: #f8fafc;                /* primary: headings, numbers (slate-50) */
+  --color-fg-secondary: #cbd5e1;      /* body copy          (slate-300) */
+  --color-fg-delta: #e2e8f0;          /* neutral ▲/▼ deltas (slate-200) */
+  --color-fg-muted: #94a3b8;          /* labels, captions — floor for small text (slate-400) */
+  --color-fg-disabled: #64748b;       /* disabled only; fails AA by design (slate-500) */
+
+  /* ---------- Brand accent: electric lime (UI chrome only, never data) ---------- */
+  /* SINGLE SWAPPABLE TOKEN: change --color-accent only; the hover, muted and
+     glow values below are derived from it. (Lime #bef264 is not yet confirmed.) */
+  --color-accent: #bef264;            /* lime-300 */
+  --color-accent-hover: color-mix(in oklab, var(--color-accent) 60%, white);
+  --color-accent-muted: color-mix(in oklab, var(--color-accent) 35%, black);
+  --color-on-accent: #020617;         /* text on accent fill */
+
+  /* ---------- Metric colors (data encoding) ---------- */
+  --color-metric-speed: #22d3ee;      /* cyan-400   — top speed (mph) */
+  --color-metric-distance: #a78bfa;   /* violet-400 — distance (km) */
+  --color-squad-avg: #e2e8f0;         /* squad-average tick mark */
+
+  /* ---------- Injury risk (reserved: risk + status only) ---------- */
+  --color-risk-low: #6ee7b7;          /* emerald-300 text */
+  --color-risk-low-bg: #0f2e36;       /* emerald-500 14% on raised */
+  --color-risk-low-ring: #0f6051;     /* emerald-500 45% on raised */
+  --color-risk-medium: #fcd34d;       /* amber-300 */
+  --color-risk-medium-bg: #2f2a26;
+  --color-risk-medium-ring: #76541c;
+  --color-risk-high: #fda4af;         /* rose-300 */
+  --color-risk-high-bg: #2f1d31;
+  --color-risk-high-ring: #762941;
+  --color-risk-unknown: #cbd5e1;      /* slate-300 — first-class gray state */
+  --color-risk-unknown-bg: #222b3f;   /* slate-500 22% on raised */
+  --color-risk-unknown-ring: #475569; /* slate-600, rendered dashed */
+
+  /* Status aliases (toasts, error states) share risk hues */
+  --color-status-success: #6ee7b7;
+  --color-status-warning: #fcd34d;
+  --color-status-danger: #fda4af;
+  --color-status-danger-bg: #2f1d31;
+
+  /* ---------- Type scale (semantic; defaults text-xs…9xl remain) ---------- */
+  --text-label: 0.6875rem;            /* 11px uppercase labels */
+  --text-label--line-height: 1rem;
+  --text-label--letter-spacing: 0.12em;
+  --text-label--font-weight: 600;
+  --text-caption: 0.75rem;            /* 12px */
+  --text-caption--line-height: 1rem;
+  --text-body: 0.875rem;              /* 14px */
+  --text-body--line-height: 1.25rem;
+  --text-title: 1.125rem;             /* 18px card / panel titles */
+  --text-title--line-height: 1.5rem;
+  --text-title--font-weight: 600;
+  --text-headline: 1.5rem;            /* 24px page title */
+  --text-headline--line-height: 2rem;
+  --text-headline--letter-spacing: -0.015em;
+  --text-headline--font-weight: 600;
+  --text-kpi: 2.25rem;                /* 36px KPI numbers (mono) */
+  --text-kpi--line-height: 2.5rem;
+  --text-kpi--letter-spacing: -0.02em;
+  --text-kpi--font-weight: 600;
+
+  --tracking-label: 0.12em;
+
+  /* ---------- Radii ---------- */
+  --radius-card: 1rem;                /* = rounded-2xl */
+  --radius-control: 0.625rem;         /* buttons, inputs, segmented */
+  --radius-chip: 9999px;
+
+  /* ---------- Elevation ---------- */
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-panel: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 16px 40px -12px rgb(0 0 0 / 0.7);
+  --shadow-sheet: 0 -16px 40px -12px rgb(0 0 0 / 0.8);
+  --shadow-accent-glow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent), 0 6px 20px -6px color-mix(in srgb, var(--color-accent) 45%, transparent);
+
+  /* ---------- Motion ---------- */
+  --ease-snappy: cubic-bezier(0.2, 0, 0, 1);
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  @keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+}
+
+/* Loading skeleton (respects reduced motion) */
+@utility skeleton {
+  background: linear-gradient(90deg, var(--color-surface-overlay) 0%, var(--color-line-strong) 50%, var(--color-surface-overlay) 100%);
+  background-size: 800px 100%;
+  animation: var(--animate-shimmer);
+  @media (prefers-reduced-motion: reduce) { animation: none; }
+}
