@@ -36,4 +36,18 @@ cv/outputs/
 !.vscode/extensions.json
 .idea/
 prompt.txt
-prompt.txt
+
+
+
+
+
+
+# local backup copies
+*.bak*
+
+# local secrets / data
+backend/certs/
+*.pem
+backend/uploads/
+frame.jpg
+*.sqlite
