@@ -1090,6 +1090,7 @@ class SoccerAnalyticsPipeline:
             progress_callback(94)
         
         # Render replay (94-100%)
+        from .replay_renderer import ReplayRenderer
         replay_path = output_dir / "replay.mp4"
         renderer = ReplayRenderer(
             video_path=str(video_path),

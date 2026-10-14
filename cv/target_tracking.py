@@ -308,6 +308,18 @@ class TargetTracker:
                 frame_dets, team_map, jersey_map, appearance_map
             )
             
+            # Motion gate: a box that jumps further than a player can run (relative to box height) is an
+            # identity switch to another player, not our target. Treat it as occluded/lost instead of
+            # drawing the box on someone else. After ~2 s without the target, accept re-acquisition.
+            if target_det and self.last_known_bbox is not None and self.frames_since_detection < 2 * fps:
+                lx1, ly1, lx2, ly2 = self.last_known_bbox
+                h = max(ly2 - ly1, 1.0)
+                cx = (target_det['bbox_x1'] + target_det['bbox_x2']) / 2 - (lx1 + lx2) / 2
+                cy = (target_det['bbox_y1'] + target_det['bbox_y2']) / 2 - (ly1 + ly2) / 2
+                allowed = h * (1.0 + 0.35 * self.frames_since_detection)
+                if (cx * cx + cy * cy) ** 0.5 > allowed:
+                    target_det = None
+
             if target_det:
                 # Target found
                 track_id = target_det['track_id']
