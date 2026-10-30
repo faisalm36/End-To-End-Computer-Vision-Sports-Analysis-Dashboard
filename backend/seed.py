@@ -17,7 +17,7 @@ from database import Base, SessionLocal, engine
 from security import hash_password
 from models import (AthleteLog, CsvUpload, Match, MatchTag, MatchVideo, Player, PlayerHeatmap, PlayerMatchMetric,
                     PlayerMatchRisk, PlayerMatchStat, TagKey, TagValue, Team, TrackingDetection, User,
-                    VideoPlayerOverride, PlayerTrack)
+                    VideoPlayerOverride, PlayerTrack, PlayerInjury, PlayerRiskSnapshot)
 
 DEMO_EMAIL = "faisal@example.com"
 DEMO_PASSWORD = "capstone123"  # demo only
@@ -121,7 +121,7 @@ def seed() -> None:
     with SessionLocal() as db:
         mc.ensure_definitions(db)
         # Clear in child -> parent order so FKs are never violated.
-        for model in (PlayerMatchRisk, AthleteLog, CsvUpload, MatchTag, TagValue, TagKey, PlayerHeatmap, PlayerMatchMetric, TrackingDetection,
+        for model in (PlayerRiskSnapshot, PlayerInjury, PlayerMatchRisk, AthleteLog, CsvUpload, MatchTag, TagValue, TagKey, PlayerHeatmap, PlayerMatchMetric, TrackingDetection,
                       VideoPlayerOverride, PlayerTrack, PlayerMatchStat, MatchVideo, Match, Player, Team, User):
             db.execute(delete(model))
         db.commit()

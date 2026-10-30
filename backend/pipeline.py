@@ -976,6 +976,15 @@ def _score_risk(db: Session, video_id: int) -> None:
     except Exception as e:  # noqa: BLE001
         db.rollback()
         log.warning("video %s: injury-risk scoring skipped: %s: %s", video_id, type(e).__name__, e)
+    try:  # rule-based roster injury-risk snapshots (rir-1.0)
+        import injury_service
+        mid = db.scalar(select(MatchVideo.match_id).where(MatchVideo.video_id == video_id))
+        if mid is not None:
+            injury_service.recompute_for_match(db, mid)
+            db.commit()
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        log.warning("video %s: rir-1.0 snapshots skipped: %s: %s", video_id, type(e).__name__, e)
 
 
 def fail_interrupted_videos() -> int:
