@@ -89,6 +89,7 @@ class PlayerOut(BaseModel):
     position: Optional[str] = None
     dominant_foot: Optional[str] = None
     contract_end_date: Optional[date] = None
+    birth_date: Optional[date] = None
     created_at: Optional[UTCDateTime] = None
     team: Optional[TeamBriefOut] = None
 
@@ -103,6 +104,7 @@ class PlayerPatchIn(BaseModel):
     position: Optional[str] = Field(None, max_length=30)
     dominant_foot: Optional[Literal["Left", "Right", "Both"]] = None
     contract_end_date: Optional[date] = None
+    birth_date: Optional[date] = None
 
     @model_validator(mode="after")
     def _at_least_one(self):
@@ -261,6 +263,7 @@ class MatchOut(BaseModel):
     result: Optional[Literal["W", "D", "L"]] = None   # from our_side's perspective
     created_at: Optional[UTCDateTime] = None
     tags: list[TagOut] = []
+    surface: Literal["grass", "turf", "hybrid", "indoor", "unknown"] = "unknown"
 
 
 class MatchPatchIn(BaseModel):
@@ -270,6 +273,7 @@ class MatchPatchIn(BaseModel):
     away_score: Optional[int] = Field(None, ge=0, le=99)
     our_side: Optional[Literal["home", "away"]] = None
     result: Optional[Literal["W", "D", "L"]] = None
+    surface: Optional[Literal["grass", "turf", "hybrid", "indoor", "unknown"]] = None  # v0.9.0 injury risk
 
 
 # ---------- videos ----------

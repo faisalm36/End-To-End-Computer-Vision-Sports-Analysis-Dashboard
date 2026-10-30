@@ -71,6 +71,7 @@ class Player(Base):
     position: Mapped[Optional[str]] = mapped_column(String(30))
     dominant_foot: Mapped[Optional[str]] = mapped_column(Enum("Left", "Right", "Both", name="dominant_foot"))
     contract_end_date: Mapped[Optional[date]] = mapped_column(Date)
+    birth_date: Mapped[Optional[date]] = mapped_column(Date)  # migration 012 (age factor of the injury-risk model)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, server_default=func.current_timestamp())
 
     team: Mapped["Team"] = relationship(back_populates="players")
@@ -94,6 +95,8 @@ class Match(Base):
     away_score: Mapped[Optional[int]] = mapped_column(Integer)
     our_side: Mapped[Optional[str]] = mapped_column(Enum("home", "away", name="our_side"))
     result: Mapped[Optional[str]] = mapped_column(Enum("W", "D", "L", name="match_result"))
+    # Playing surface (migration 012): grass | turf | hybrid | indoor | unknown. Used by the injury-risk model.
+    surface: Mapped[str] = mapped_column(String(10), default="unknown", server_default="unknown")
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, server_default=func.current_timestamp())
 
     home_team: Mapped["Team"] = relationship(foreign_keys=[home_team_id])
@@ -392,3 +395,43 @@ class PlayerMatchRisk(Base):
     model_version: Mapped[str] = mapped_column(String(40))
     details_enc: Mapped[Optional[str]] = mapped_column(Text)  # JSON: display features, model features, contributions
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, server_default=func.current_timestamp())  # UTC
+
+
+class PlayerInjury(Base):
+    """Injury history entered by a player/staff (migration 012). Notes are AES-256-GCM (health data)."""
+    __tablename__ = "player_injuries"
+    __table_args__ = (Index("ix_pi_player_date", "player_id", "injury_date"),)
+
+    injury_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.player_id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"), index=True)
+    body_part: Mapped[str] = mapped_column(String(20))
+    injury_type: Mapped[str] = mapped_column(String(20))
+    side: Mapped[str] = mapped_column(String(5), default="na", server_default="na")
+    injury_date: Mapped[date] = mapped_column(Date)
+    return_date: Mapped[Optional[date]] = mapped_column(Date)
+    days_missed: Mapped[Optional[int]] = mapped_column(Integer)
+    is_recurrence: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    source: Mapped[str] = mapped_column(String(10), default="player", server_default="player")
+    notes_enc: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, server_default=func.current_timestamp())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, onupdate=utcnow)
+
+
+class PlayerRiskSnapshot(Base):
+    """Persisted rir-1.0 scores (current + one per past match). score/factors encrypted like player_match_risk."""
+    __tablename__ = "player_risk_snapshots"
+    __table_args__ = (UniqueConstraint("player_id", "kind", "as_of", "match_id", name="uq_prs"),)
+
+    snapshot_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.player_id", ondelete="CASCADE"), index=True)
+    match_id: Mapped[Optional[int]] = mapped_column(ForeignKey("matches.match_id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(12))  # current | history | projection
+    as_of: Mapped[date] = mapped_column(Date)
+    next_surface: Mapped[Optional[str]] = mapped_column(String(10))
+    score_enc: Mapped[str] = mapped_column(Text)
+    band: Mapped[str] = mapped_column(String(10))
+    confidence: Mapped[str] = mapped_column(String(8))
+    factors_enc: Mapped[str] = mapped_column(Text)
+    model_version: Mapped[str] = mapped_column(String(20))
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, server_default=func.current_timestamp())

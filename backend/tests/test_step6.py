@@ -353,7 +353,7 @@ def test_match_objects_and_patch(client, demo, zed):
     assert ms[5]["result"] == "L" and ms[4]["result"] == "D" and ms[7]["result"] is None
     assert set(ms[1]) == {"match_id", "match_date", "home_team", "away_team", "home_team_id", "away_team_id",
                           "video_count", "home_score", "away_score", "our_side", "our_team", "opponent", "result",
-                          "created_at", "tags"}
+                          "created_at", "tags", "surface"}
     v1 = client.get("/api/videos/1", headers=demo).json()
     assert v1["match"]["home_score"] == 3 and v1["match"]["result"] == "W"
 

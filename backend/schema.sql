@@ -404,3 +404,7 @@ CREATE TABLE IF NOT EXISTS player_match_risk (
   CONSTRAINT fk_pmr_match FOREIGN KEY (match_id) REFERENCES matches (match_id) ON DELETE CASCADE,
   CONSTRAINT fk_pmr_video FOREIGN KEY (video_id) REFERENCES match_videos (video_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------- v0.9.0 roster injury risk (migration 012)
+-- Fresh installs: matches.surface and players.birth_date are added by migrations/012_injury_history_surface.sql
+-- (idempotent; run it after this file). It also creates player_injuries and player_risk_snapshots.

@@ -22,7 +22,7 @@ def match_out(m: Match, user_id: int, video_count: int, tags: list[TagOut]) -> M
                     away_team=m.away_team.team_name, home_team_id=m.home_team_id, away_team_id=m.away_team_id,
                     video_count=video_count, home_score=m.home_score, away_score=m.away_score, our_side=side,
                     our_team=ours.team_name, opponent=theirs.team_name, result=match_result(m, user_id),
-                    created_at=m.created_at, tags=tags)
+                    created_at=m.created_at, tags=tags, surface=m.surface or "unknown")
 
 
 def _video_counts(db: Session, user_id: int, match_ids: list[int]) -> dict[int, int]:
@@ -64,11 +64,19 @@ def get_match(match_id: int, db: Session = Depends(get_db), user: User = Depends
 @router.patch("/{match_id}", response_model=MatchOut)
 def patch_match(match_id: int, body: MatchPatchIn, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)) -> MatchOut:
-    """Set score / our_side / result. Scores go in pairs (both ints or both null). With scores, result is derived."""
+    """Set score / our_side / result / surface (surface edits recompute injury-risk snapshots). Scores go in pairs (both ints or both null). With scores, result is derived."""
     m = get_user_match(db, user, match_id)
     sent = body.model_fields_set
     if not sent:
-        raise HTTPException(status_code=422, detail="Provide home_score/away_score, our_side and/or result")
+        raise HTTPException(status_code=422, detail="Provide home_score/away_score, our_side, result and/or surface")
+    if "surface" in sent:
+        if body.surface is None:
+            raise HTTPException(status_code=422, detail="surface must be grass, turf, hybrid, indoor or unknown")
+        if body.surface != m.surface:
+            m.surface = body.surface
+            db.flush()
+            import injury_service
+            injury_service.recompute_for_match(db, m.match_id)
     home = body.home_score if "home_score" in sent else m.home_score
     away = body.away_score if "away_score" in sent else m.away_score
     if (home is None) != (away is None):

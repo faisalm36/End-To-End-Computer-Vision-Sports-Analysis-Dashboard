@@ -1,5 +1,6 @@
 """FastAPI entry point. Run from backend/:  uvicorn main:app --reload"""
 import logging
+from datetime import date
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -17,7 +18,7 @@ from models import Player, Team, User
 from pipeline import fail_interrupted_videos, resolve_mode
 import metrics_catalog as mc
 from database import SessionLocal
-from routers import auth, insights, matches, meta, metrics, risk, tags, tracking, videos
+from routers import auth, injury_risk, insights, matches, meta, metrics, risk, tags, tracking, videos
 from schemas import HealthOut, PlayerOut, PlayerPatchIn, PlayerStatMetricsOut, TeamBriefOut
 from security import get_current_user
 from stats import aggregate_player_stats, wants_metrics
@@ -141,13 +142,14 @@ app.include_router(metrics.router)
 app.include_router(insights.router)
 app.include_router(tracking.router)
 app.include_router(risk.router)
+app.include_router(injury_risk.router)
 
 
 def _player_out(p: Player, team: Team) -> PlayerOut:
     return PlayerOut(
         player_id=p.player_id, team_id=p.team_id, first_name=p.first_name, last_name=p.last_name,
         jersey_number=p.jersey_number, position=p.position, dominant_foot=p.dominant_foot,
-        contract_end_date=p.contract_end_date, created_at=p.created_at,
+        contract_end_date=p.contract_end_date, birth_date=p.birth_date, created_at=p.created_at,
         team=TeamBriefOut(team_id=team.team_id, team_name=team.team_name, league=team.league,
                           created_at=team.created_at),
     )
@@ -224,8 +226,13 @@ def patch_player(player_id: int, body: PlayerPatchIn,
         if clash is not None:
             raise HTTPException(status_code=409,
                                 detail=f"Jersey number {data['jersey_number']} is already taken on this team")
+    if data.get("birth_date") is not None and data["birth_date"] > date.today():
+        raise HTTPException(status_code=422, detail="birth_date cannot be in the future")
     for k, v in data.items():
         setattr(p, k, v)
+    if "birth_date" in data:
+        import injury_service
+        injury_service.recompute(db, [p.player_id])
     db.commit()
     db.refresh(p)
     db.refresh(team)

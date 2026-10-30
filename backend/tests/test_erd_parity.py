@@ -26,7 +26,7 @@ def demo(client):
 
 
 PLAYER_KEYS = {"player_id", "team_id", "first_name", "last_name", "jersey_number", "position",
-               "dominant_foot", "contract_end_date", "created_at", "team"}
+               "dominant_foot", "contract_end_date", "birth_date", "created_at", "team"}
 TEAM_KEYS = {"team_id", "team_name", "league", "created_at"}
 
 
