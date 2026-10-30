@@ -6,7 +6,7 @@
 `p = 1 − exp(−λ0 · h · M)`, `score = 100 · p / p_max`, where
 - λ0 = 27.5 injuries / 1000 match-hours (Ekstrand 2011), h = expected minutes / 60
 - M = product of multipliers below, capped at 8 (design); p_max = p at M=8, 90 min (≈28%)
-- Bands (design): low < 25 ≤ moderate < 50 ≤ high. A baseline player scores ≈14 (≈4% per 90 min).
+- Injury risk score levels (design): Low < 25 ≤ Moderate < 50 ≤ High. A baseline player scores ≈14 (≈4% per 90 min).
 - `p` is shown as a "relative indicator", not a calibrated probability, until validated on our own data.
 
 ## Factors

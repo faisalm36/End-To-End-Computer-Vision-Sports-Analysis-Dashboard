@@ -61,9 +61,9 @@ export default function InjuryRoster() {
           </label>
         )}
         <label className="block">
-          <span className={label}>Band</span>
+          <span className={label}>Injury risk score</span>
           <select value={band} onChange={(e) => setBand(e.target.value)} className={`${input} mt-1 w-40`}>
-            {BANDS.map((b) => <option key={b} value={b}>{b === 'all' ? 'All bands' : `${b[0].toUpperCase()}${b.slice(1)} (${counts[b]})`}</option>)}
+            {BANDS.map((b) => <option key={b} value={b}>{b === 'all' ? 'All' : `${b[0].toUpperCase()}${b.slice(1)} (${counts[b]})`}</option>)}
           </select>
         </label>
       </section>
@@ -109,7 +109,7 @@ export default function InjuryRoster() {
           </table>
         </div>
       )}
-      <p className="mt-4 text-caption text-fg-muted">Bands: low &lt; 25 ≤ moderate &lt; 50 ≤ high. Scores are relative indicators, not calibrated probabilities.</p>
+      <p className="mt-4 text-caption text-fg-muted">Injury risk score: Low &lt; 25 ≤ Moderate &lt; 50 ≤ High. Scores are relative indicators, not calibrated probabilities.</p>
     </div>
   );
 }
