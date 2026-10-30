@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getMatch, isUnsupported, updateMatch } from '../lib/api';
+import { SURFACE_LABELS, SURFACES as SURFACE_OPTIONS } from '../lib/injuryRisk';
 import { parseScore, RESULT_LABEL, resultFromScore, scoreFormFrom, scorePatch, validateScore } from '../lib/score';
 import { btn, focusRing, input } from './classes';
 import { Icon, Spinner } from './ui';
@@ -100,7 +101,22 @@ export default function MatchScore({ video, demo = false, onSaved }) {
     away_score: video?.match?.away_score ?? null,
     our_side: video?.our_side ?? 'home',
     result: video?.result ?? video?.match?.result ?? null,
+    surface: video?.match?.surface ?? 'unknown',
   }));
+  const [surfaceMsg, setSurfaceMsg] = useState(null);
+  const saveSurface = async (surface) => {
+    const prev = match.surface;
+    setMatch((m) => ({ ...m, surface }));
+    if (demo) return;
+    try {
+      const next = await updateMatch(matchId, { surface });
+      setMatch((m) => ({ ...m, ...next }));
+      setSurfaceMsg('Surface saved · injury-risk scores updated');
+    } catch (err) {
+      setMatch((m) => ({ ...m, surface: prev }));
+      setSurfaceMsg(err?.message || 'Couldn’t save the surface.');
+    }
+  };
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(() => scoreFormFrom(match));
   const [error, setError] = useState(null);
@@ -173,6 +189,22 @@ export default function MatchScore({ video, demo = false, onSaved }) {
           <Icon name="trophy" className="size-3.5" />
           {line || match.result ? 'Edit score' : 'Add score'}
         </button>
+        <label className="ml-2 inline-flex items-center gap-2 text-caption text-fg-muted">
+          Surface
+          <select
+            aria-label="Playing surface"
+            value={match.surface || 'unknown'}
+            onChange={(e) => saveSurface(e.target.value)}
+            className="h-8 rounded-lg border border-line-input bg-surface-base px-2 text-caption text-fg"
+          >
+            {SURFACE_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {SURFACE_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {surfaceMsg && <span className="text-caption text-fg-muted" role="status">{surfaceMsg}</span>}
       </div>
     );
   }

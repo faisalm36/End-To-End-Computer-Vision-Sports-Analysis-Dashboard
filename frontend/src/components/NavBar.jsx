@@ -9,6 +9,7 @@ const LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/players', label: 'Players' },
   { to: '/roster', label: 'Roster risk' },
+  { to: '/roster/risk', label: 'Injury risk' },
   { to: '/upload', label: 'Upload' },
   { to: '/insights', label: 'Insights' },
   { to: '/profile', label: 'Profile' },
@@ -103,7 +104,7 @@ export default function NavBar() {
         {isAuthenticated && (
           <div className="hidden items-center gap-1 lg:flex">
             {LINKS.map((l) => (
-              <NavLink key={l.to} to={l.to} className={navLinkClass}>
+              <NavLink key={l.to} to={l.to} end className={navLinkClass}>
                 {l.label}
               </NavLink>
             ))}
@@ -150,7 +151,7 @@ export default function NavBar() {
               <>
                 <p className="px-3 pb-2 text-caption text-fg-muted">Signed in as {user?.email || user?.name || 'you'}</p>
                 {LINKS.map((l) => (
-                  <NavLink key={l.to} to={l.to} className={navLinkClass}>
+                  <NavLink key={l.to} to={l.to} end className={navLinkClass}>
                     {l.label}
                   </NavLink>
                 ))}

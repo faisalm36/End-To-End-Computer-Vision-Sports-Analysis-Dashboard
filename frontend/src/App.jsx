@@ -8,6 +8,8 @@ import ForgotPassword from './pages/ForgotPassword';
 import Insights from './pages/Insights';
 import Players from './pages/Players';
 import RosterRisk from './pages/RosterRisk';
+import InjuryRoster from './pages/InjuryRoster';
+import PlayerInjuryRisk from './pages/PlayerInjuryRisk';
 import CsvUpload from './pages/CsvUpload';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
@@ -40,6 +42,8 @@ export default function App() {
               <Route path="players" element={<Players />} />
               <Route path="roster" element={<RosterRisk />} />
               <Route path="roster/upload" element={<CsvUpload />} />
+              <Route path="roster/risk" element={<InjuryRoster />} />
+              <Route path="players/:id/risk" element={<PlayerInjuryRisk />} />
               <Route path="upload" element={<Upload />} />
               <Route path="profile" element={<Profile />} />
               <Route path="history" element={<Navigate to="/profile" replace />} />

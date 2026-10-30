@@ -304,6 +304,11 @@ export default function Players() {
                           <span className="font-mono text-fg-muted">{p.jersey_number != null ? `#${p.jersey_number}` : '—'}</span>{' '}
                           {displayName(p)}
                         </p>
+                        {!state.sample && (
+                          <Link to={`/players/${p.player_id}/risk`} className={`text-caption text-accent hover:underline ${focusRing}`}>
+                            Injury risk &amp; history
+                          </Link>
+                        )}
                         <p className="mt-0.5 text-caption text-fg-muted">
                           {[p.position, p.dominant_foot, p.contract_end_date].filter(Boolean).join(' · ') || 'No extras yet'}
                         </p>
@@ -354,6 +359,11 @@ export default function Players() {
                         <td className="px-3 py-3 text-fg-secondary">{p.dominant_foot || '—'}</td>
                         <td className="px-3 py-3 font-mono text-fg-secondary">{p.contract_end_date || '—'}</td>
                         <td className="px-5 py-3 text-right">
+                          {!state.sample && (
+                            <Link to={`/players/${p.player_id}/risk`} className={`${btn.ghost} h-9`}>
+                              Injury risk
+                            </Link>
+                          )}
                           {!state.sample && (
                             <button type="button" className={`${btn.ghost} h-9`} onClick={() => setEditing(p)}>
                               Edit
