@@ -115,6 +115,9 @@ export default function NavBar() {
             <AvatarMenu user={user} onLogout={handleLogout} />
           ) : (
             <>
+              <a href="/#faq" className={btn.ghost}>
+                FAQ
+              </a>
               <Link to="/login" className={btn.ghost}>
                 Log in
               </Link>
@@ -160,6 +163,9 @@ export default function NavBar() {
               </>
             ) : (
               <div className="flex flex-col gap-2">
+                <a href="/#faq" className={`${btn.ghost} w-full`}>
+                  FAQ
+                </a>
                 <Link to="/login" className={`${btn.secondary} w-full`}>
                   Log in
                 </Link>
