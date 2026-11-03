@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { useAuth } from '../auth/useAuth';
 import { btn, card, container, focusRing, label } from '../components/classes';
+import FAQ from '../components/FAQ';
 import { Icon } from '../components/ui';
 import { METRIC_GROUPS, statusFromRegistry, thresholdText, WORKLOAD_DISCLAIMER } from '../lib/metrics';
 import { useMetricDefs } from '../lib/useMetricDefs';
@@ -243,6 +244,9 @@ export default function Landing() {
               See exactly what we track
               <Icon name="arrowRight" className="size-4" />
             </a>
+            <a href="#faq" className={`mt-6 ml-6 inline-flex items-center gap-1.5 rounded text-body text-fg-secondary hover:text-fg ${focusRing}`}>
+              Read the FAQ
+            </a>
           </div>
           <HeroMock />
         </div>
@@ -331,6 +335,8 @@ export default function Landing() {
           </blockquote>
         </div>
       </section>
+
+      <FAQ />
 
       {/* Final CTA */}
       <section className={`${container} py-20 sm:py-24`}>
